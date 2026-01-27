@@ -84,7 +84,7 @@ else:
 
             # 2. Main Forecast Plot
             img_data = base64.b64decode(result['plot'])
-            st.image(Image.open(BytesIO(img_data)), use_column_width=True, caption="Historical Performance + 30 Day Forecast")
+            st.image(Image.open(BytesIO(img_data)), width="container", caption="Historical Performance + 30 Day Forecast")
 
             # 3. Forecast Data
             st.divider()
