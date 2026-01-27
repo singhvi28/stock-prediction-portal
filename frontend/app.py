@@ -10,6 +10,32 @@ API_URL = "http://localhost:8000"
 
 st.set_page_config(page_title="Stock Prediction Dashboard", layout="wide")
 
+def render_footer():
+    st.markdown(
+        """
+        <style>
+        .footer {
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            background-color: #0e1117;
+            color: #9aa0a6;
+            text-align: center;
+            padding: 10px;
+            font-size: 13px;
+            z-index: 9999;
+        }
+        </style>
+
+        <div class="footer">
+            ⚠️ This dashboard is for educational and research purposes only.  
+            It is not financial advice. Use at your own risk.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # Session State Initialization
 if "token" not in st.session_state:
     st.session_state.token = None
@@ -84,7 +110,7 @@ else:
 
             # 2. Main Forecast Plot
             img_data = base64.b64decode(result['plot'])
-            st.image(Image.open(BytesIO(img_data)), width="container", caption="Historical Performance + 30 Day Forecast")
+            st.image(Image.open(BytesIO(img_data)), use_column_width=True, caption="Historical Performance + 30 Day Forecast")
 
             # 3. Forecast Data
             st.divider()
@@ -120,3 +146,6 @@ else:
         st.session_state.token = None
         st.session_state.authenticated = False
         st.rerun()
+    
+    # Footer
+    render_footer()
