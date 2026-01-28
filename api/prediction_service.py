@@ -93,7 +93,7 @@ def fetch_stock_data_stooq(ticker):
     df = df.reset_index().rename(columns={'Date': 'Date', 'Open': 'Open', 'High': 'High', 'Low': 'Low', 'Close': 'Close', 'Volume': 'Volume'})
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.sort_values('Date')
-    five_years_ago = datetime.now() - timedelta(days=5*365)
+    five_years_ago = datetime.now() - timedelta(days=10*365)
     return df[df['Date'] >= five_years_ago].reset_index(drop=True)
 
 # =========================
@@ -212,27 +212,40 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
     # 6. Visualization & Dates
     dates = df['Date'].iloc[lookback:].reset_index(drop=True)
     last_date = dates.iloc[-1]
+    
+    # Create future date range
     future_dates = [last_date + timedelta(days=i+1) for i in range(forecast_days)]
+    
+    # Combine backtest predictions and future predictions for a single continuous line
+    # We use the last predicted point to bridge the gap
+    all_pred_dates = pd.concat([dates, pd.Series(future_dates)])
+    all_pred_vals = np.concatenate([preds_inv, future_inv])
 
     plt.style.use('dark_background')
     fig, ax = plt.subplots(figsize=(15, 7))
     
-    # Plot historical actuals and the model's backtest predictions
-    ax.plot(dates, actual_inv, label='Actual Price', color='#22c55e', alpha=0.6)
-    ax.plot(dates, preds_inv, label='Model Backtest', color='#3b82f6', linestyle='--', alpha=0.8)
+    # 1. Plot historical actuals (Solid Blue)
+    ax.plot(dates, actual_inv, label='Actual Price', color='#818cf8', alpha=0.8, linewidth=1.5)
     
-    # Plot future forecast
-    forecast_plot_dates = [dates.iloc[-1]] + list(future_dates)
-    forecast_plot_vals = [actual_inv[-1]] + list(future_inv)
-    ax.plot(forecast_plot_dates, forecast_plot_vals, label='30-Day Forecast', color='#f59e0b', linewidth=2)
+    # 2. Plot continuous Forecast (Dashed Orange)
+    # This now includes both the backtest and the 30-day future forecast
+    ax.plot(all_pred_dates, all_pred_vals, label='Model Forecast', 
+            color='#fb923c', linestyle='--', alpha=0.9, linewidth=2)
 
-    ax.set_title(f"{ticker} LSTM-Attention Prediction & Forecast", fontsize=16)
-    ax.legend()
+    # 3. Visual Separator (Optional: keep or remove based on preference)
+    ax.axvline(x=last_date, color='white', linestyle=':', alpha=0.2)
+
+    ax.set_title(f"{ticker} - Price & Extended Forecast", fontsize=16)
+    ax.set_ylabel("Price ($)")
+    ax.legend(loc='upper left')
     ax.grid(True, alpha=0.1)
+    
+    plt.xticks(rotation=30)
+    plt.tight_layout()
     
     # Convert Plot to Base64
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=100, facecolor='#0a0a0a')
+    plt.savefig(buf, format='png', dpi=120, facecolor='#0a0a0a')
     buf.seek(0)
     img_base64 = base64.b64encode(buf.read()).decode()
     plt.close()
@@ -250,3 +263,4 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
         "forecast_dates": [d.strftime('%Y-%m-%d') for d in future_dates],
         "plot": img_base64
     }
+    
