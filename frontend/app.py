@@ -92,7 +92,7 @@ else:
     # Sidebar
     st.sidebar.title("📈 Controls")
     ticker = st.sidebar.text_input("Stock Ticker", value="AAPL").upper()
-    lookback = st.sidebar.slider("Lookback Window (Days)", 40, 60, 60)
+    lookback = st.sidebar.slider("Lookback Window (Days)", 30, 150, 60)
     
     if st.sidebar.button("Run Prediction & Forecast"):
         result = get_prediction(ticker, lookback)
