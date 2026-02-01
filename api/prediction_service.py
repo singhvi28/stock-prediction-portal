@@ -2,12 +2,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 import warnings
-import io
-import base64
 
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
@@ -209,47 +204,13 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
 
     future_inv = close_scaler.inverse_transform(np.array(future_preds_scaled).reshape(-1, 1)).flatten()
 
-    # 6. Visualization & Dates
+    # 6. Visualization Data Preparation
     dates = df['Date'].iloc[lookback:].reset_index(drop=True)
     last_date = dates.iloc[-1]
     
     # Create future date range
     future_dates = [last_date + timedelta(days=i+1) for i in range(forecast_days)]
     
-    # Combine backtest predictions and future predictions for a single continuous line
-    # We use the last predicted point to bridge the gap
-    all_pred_dates = pd.concat([dates, pd.Series(future_dates)])
-    all_pred_vals = np.concatenate([preds_inv, future_inv])
-
-    plt.style.use('dark_background')
-    fig, ax = plt.subplots(figsize=(15, 7))
-    
-    # 1. Plot historical actuals (Solid Blue)
-    ax.plot(dates, actual_inv, label='Actual Price', color='#818cf8', alpha=0.8, linewidth=1.5)
-    
-    # 2. Plot continuous Forecast (Dashed Orange)
-    # This now includes both the backtest and the 30-day future forecast
-    ax.plot(all_pred_dates, all_pred_vals, label='Model Forecast', 
-            color='#fb923c', linestyle='--', alpha=0.9, linewidth=2)
-
-    # 3. Visual Separator (Optional: keep or remove based on preference)
-    ax.axvline(x=last_date, color='white', linestyle=':', alpha=0.2)
-
-    ax.set_title(f"{ticker} - Price & Extended Forecast", fontsize=16)
-    ax.set_ylabel("Price ($)")
-    ax.legend(loc='upper left')
-    ax.grid(True, alpha=0.1)
-    
-    plt.xticks(rotation=30)
-    plt.tight_layout()
-    
-    # Convert Plot to Base64
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=120, facecolor='#0a0a0a')
-    buf.seek(0)
-    img_base64 = base64.b64encode(buf.read()).decode()
-    plt.close()
-
     return {
         "ticker": ticker,
         "metrics": {
@@ -259,8 +220,10 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
             "directional_accuracy": float(directional_accuracy)
         },
         "last_price": float(actual_inv[-1]),
-        "forecast_30_days": [float(x) for x in future_inv],
+        "historical_dates": [d.strftime('%Y-%m-%d') for d in dates],
+        "historical_prices": [float(x) for x in actual_inv],
+        "model_historical_predictions": [float(x) for x in preds_inv],
         "forecast_dates": [d.strftime('%Y-%m-%d') for d in future_dates],
-        "plot": img_base64
+        "forecast_prices": [float(x) for x in future_inv]
     }
     

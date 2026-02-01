@@ -1,9 +1,7 @@
 import streamlit as st
 import requests
-import base64
+import plotly.graph_objects as go
 import pandas as pd
-from io import BytesIO
-from PIL import Image
 
 # Configuration
 API_URL = "http://localhost:8000"
@@ -109,38 +107,74 @@ else:
                 m4.metric("Directional Accuracy", f"{result['metrics']['directional_accuracy']:.2f}%")
 
             # 2. Main Forecast Plot
-            img_data = base64.b64decode(result['plot'])
-            st.image(Image.open(BytesIO(img_data)), use_column_width=True, caption="Historical Performance + 30 Day Forecast")
+            st.markdown("### Price & Extended Forecast")
+            
+            historical_dates = result.get('historical_dates', [])
+            historical_prices = result.get('historical_prices', [])
+            model_historical_predictions = result.get('model_historical_predictions', [])
+            forecast_dates = result.get('forecast_dates', [])
+            forecast_prices = result.get('forecast_prices', [])
+            
+            # Create Plotly Graph
+            fig = go.Figure()
 
-            # 3. Forecast Data
-            st.divider()
-            col_a, col_b = st.columns([1, 1])
+            # Add Historical Data (Actual)
+            fig.add_trace(go.Scatter(
+                x=historical_dates,
+                y=historical_prices,
+                mode='lines',
+                name='Actual Price',
+                line=dict(color='#818cf8', width=2)
+            ))
 
-            with col_a:
-                st.subheader("🚀 30-Day Future Forecast")
-                # Creating a DataFrame for the future predictions
-                forecast_df = pd.DataFrame({
-                    "Date": result['forecast_dates'],
-                    "Predicted Price": result['forecast_30_days']
-                })
-                st.dataframe(forecast_df.style.format({
-                    "Predicted Price": "${:.2f}"
-                }).highlight_max(subset=["Predicted Price"], color='#2e7d32')
-                  .highlight_min(subset=["Predicted Price"], color='#c62828'), 
-                  use_container_width=True, height=400)
+            # Add Historical Model Predictions
+            if model_historical_predictions:
+                 fig.add_trace(go.Scatter(
+                    x=historical_dates,
+                    y=model_historical_predictions,
+                    mode='lines',
+                    name='Model Fitted (Past)',
+                    line=dict(color='#34d399', width=1.5, dash='dot'),
+                    opacity=0.7
+                ))
 
-            with col_b:
-                st.subheader("📊 Model Summary")
-                st.info(f"The model analyzed the last {lookback} days of data to predict a trend. "
-                        "Recursive forecasting uses the model's own predicted output to estimate the next day. "
-                        "The predictions may flat-line after the first 10 days.")
+            # Add Forecast Data
+            # Connect the last historical point to the first forecast point for continuity
+            if historical_dates and model_historical_predictions and forecast_dates and forecast_prices:
+                 # Prepend last model prediction to forecast for visual continuity
+                viz_forecast_dates = [historical_dates[-1]] + forecast_dates
+                viz_forecast_prices = [model_historical_predictions[-1]] + forecast_prices
                 
-                last_price = result.get('last_price', 0)
-                final_forecast = result['forecast_30_days'][-1]
-                total_change = ((final_forecast - last_price) / last_price) * 100
-                
-                st.metric("Current Price", f"${last_price:.2f}")
-                st.metric("30-Day Target", f"${final_forecast:.2f}", f"{total_change:+.2f}%")
+                fig.add_trace(go.Scatter(
+                    x=viz_forecast_dates,
+                    y=viz_forecast_prices,
+                    mode='lines',
+                    name='Future Forecast',
+                    line=dict(color='#fb923c', width=2, dash='dash')
+                ))
+
+            fig.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color="#9aa0a6"),
+                xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
+                yaxis=dict(
+                    showgrid=True, 
+                    gridcolor='rgba(255,255,255,0.1)',
+                    title="Price ($)"
+                ),
+                margin=dict(l=0, r=0, t=30, b=0),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                ),
+                hovermode="x unified"
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
 
     if st.sidebar.button("Logout"):
         st.session_state.token = None
