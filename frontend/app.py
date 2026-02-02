@@ -56,11 +56,11 @@ def login(username, password):
         st.error(f"Connection error: {e}")
         return False
 
-def get_prediction(ticker, lookback):
+def get_prediction(ticker, lookback, model_type):
     headers = {"Authorization": f"Bearer {st.session_state.token}"}
-    payload = {"ticker": ticker, "lookback": lookback}
+    payload = {"ticker": ticker, "lookback": lookback, "model": model_type}
     
-    with st.spinner(f"Training LSTM with Attention and generating 30-day forecast for {ticker}..."):
+    with st.spinner(f"Training selected model and generating 30-day forecast for {ticker}..."):
         try:
             response = requests.post(f"{API_URL}/api/predict", json=payload, headers=headers)
             if response.status_code == 200:
@@ -90,10 +90,23 @@ else:
     # Sidebar
     st.sidebar.title("📈 Controls")
     ticker = st.sidebar.text_input("Stock Ticker", value="AAPL").upper()
-    lookback = st.sidebar.slider("Lookback Window (Days)", 30, 150, 60)
+    
+    # Fixed lookback window as per requirement
+    lookback = 60
+    
+    # Model Selection
+    model_choice = st.sidebar.selectbox(
+        "Prediction Model",
+        ["Multihead Attention", "Additive Attention"]
+    )
+    
+    model_map = {
+        "Multihead Attention": "multihead",
+        "Additive Attention": "additive"
+    }
     
     if st.sidebar.button("Run Prediction & Forecast"):
-        result = get_prediction(ticker, lookback)
+        result = get_prediction(ticker, lookback, model_map[model_choice])
         
         if result:
             st.title(f"Analysis for {result['ticker']}")

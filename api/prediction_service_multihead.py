@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import datetime, timedelta
 import warnings
 
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,40 +16,109 @@ warnings.filterwarnings('ignore')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # =========================
-# Attention & Model
+# Multi-Head Attention & Model
 # =========================
-class AttentionLayer(nn.Module):
-    def __init__(self, hidden_size, attention_size=64):
+
+class PositionalEncoding(nn.Module):
+    """Add positional information to input sequences"""
+    def __init__(self, d_model, max_len=5000):
         super().__init__()
-        self.W = nn.Linear(hidden_size, attention_size)
-        self.U = nn.Linear(attention_size, 1, bias=False)
-
-    def forward(self, lstm_output):
-        scores = torch.tanh(self.W(lstm_output))
-        scores = self.U(scores).squeeze(-1)
-        weights = F.softmax(scores, dim=1)
-        context = torch.sum(lstm_output * weights.unsqueeze(-1), dim=1)
-        return context, weights
-
-class MultivariateLSTMWithAttention(nn.Module):
-    def __init__(self, input_size, hidden_size1=128, hidden_size2=64, dropout=0.2):
-        super().__init__()
-        self.lstm1 = nn.LSTM(input_size, hidden_size1, batch_first=True)
-        self.dropout1 = nn.Dropout(dropout)
-        self.lstm2 = nn.LSTM(hidden_size1, hidden_size2, batch_first=True)
-        self.dropout2 = nn.Dropout(dropout)
-        self.attention = AttentionLayer(hidden_size2)
-        self.fc1 = nn.Linear(hidden_size2, 32)
-        self.fc2 = nn.Linear(32, 1)
-
+        
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
+        
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        
+        pe = pe.unsqueeze(0)
+        self.register_buffer('pe', pe)
+    
     def forward(self, x):
-        x, _ = self.lstm1(x)
-        x = self.dropout1(x)
-        x, _ = self.lstm2(x)
-        x = self.dropout2(x)
-        context, _ = self.attention(x)
-        x = F.relu(self.fc1(context))
+        """
+        Args:
+            x: Tensor of shape (batch_size, seq_len, d_model)
+        """
+        return x + self.pe[:, :x.size(1), :]
+
+
+class MultiHeadAttentionModel(nn.Module):
+    """
+    Stock prediction model using multi-head attention mechanism.
+    Replaces LSTM layers with Transformer encoder layers.
+    """
+    def __init__(self, input_size, d_model=128, nhead=8, num_layers=2, dropout=0.2):
+        super().__init__()
+        
+        self.d_model = d_model
+        
+        # Input projection layer to map features to d_model dimensions
+        self.input_projection = nn.Linear(input_size, d_model)
+        
+        # Positional encoding
+        self.pos_encoder = PositionalEncoding(d_model)
+        
+        # Multi-head attention layers via TransformerEncoder
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=d_model * 4,
+            dropout=dropout,
+            activation='relu',
+            batch_first=True,
+            norm_first=False
+        )
+        
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=num_layers
+        )
+        
+        # Attention pooling layer (alternative to just taking last output)
+        self.attention_pool = nn.MultiheadAttention(
+            embed_dim=d_model,
+            num_heads=nhead,
+            dropout=dropout,
+            batch_first=True
+        )
+        
+        # Query for attention pooling
+        self.query = nn.Parameter(torch.randn(1, 1, d_model))
+        
+        # Output layers
+        self.dropout = nn.Dropout(dropout)
+        self.fc1 = nn.Linear(d_model, 32)
+        self.fc2 = nn.Linear(32, 1)
+    
+    def forward(self, x):
+        """
+        Args:
+            x: Input tensor of shape (batch_size, seq_len, input_size)
+        Returns:
+            Output predictions of shape (batch_size, 1)
+        """
+        batch_size = x.size(0)
+        
+        # Project input to d_model dimensions
+        x = self.input_projection(x)  # (batch_size, seq_len, d_model)
+        
+        # Add positional encoding
+        x = self.pos_encoder(x)
+        
+        # Apply transformer encoder with multi-head attention
+        x = self.transformer_encoder(x)  # (batch_size, seq_len, d_model)
+        
+        # Use attention pooling to aggregate sequence information
+        # Expand query to match batch size
+        query = self.query.expand(batch_size, -1, -1)  # (batch_size, 1, d_model)
+        context, _ = self.attention_pool(query, x, x)  # (batch_size, 1, d_model)
+        context = context.squeeze(1)  # (batch_size, d_model)
+        
+        # Pass through output layers
+        x = self.dropout(context)
+        x = F.relu(self.fc1(x))
         return self.fc2(x)
+
 
 # =========================
 # Technical Indicators
@@ -84,12 +152,20 @@ def prepare_sequences(data, features, lookback=60):
 
 def fetch_stock_data_stooq(ticker):
     df = web.DataReader(ticker, 'stooq')
-    if df.empty: raise Exception("No data from Stooq")
-    df = df.reset_index().rename(columns={'Date': 'Date', 'Open': 'Open', 'High': 'High', 'Low': 'Low', 'Close': 'Close', 'Volume': 'Volume'})
+    if df.empty: 
+        raise Exception("No data from Stooq")
+    df = df.reset_index().rename(columns={
+        'Date': 'Date', 
+        'Open': 'Open', 
+        'High': 'High', 
+        'Low': 'Low', 
+        'Close': 'Close', 
+        'Volume': 'Volume'
+    })
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.sort_values('Date')
-    five_years_ago = datetime.now() - timedelta(days=10*365)
-    return df[df['Date'] >= five_years_ago].reset_index(drop=True)
+    ten_years_ago = datetime.now() - timedelta(days=10*365)
+    return df[df['Date'] >= ten_years_ago].reset_index(drop=True)
 
 # =========================
 # Main Prediction Function
@@ -97,8 +173,17 @@ def fetch_stock_data_stooq(ticker):
 
 def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
     """
-    Fetches data, trains a Multivariate LSTM with Attention, 
+    Fetches data, trains a Multi-Head Attention model, 
     calculates performance metrics, and generates a 30-day recursive forecast.
+    
+    Args:
+        ticker: Stock ticker symbol
+        lookback: Number of time steps to look back
+        epochs: Number of training epochs
+        forecast_days: Number of days to forecast into the future
+    
+    Returns:
+        Dictionary containing metrics, historical data, and forecasts
     """
     # 1. Fetch and Prepare Data
     df = fetch_stock_data_stooq(ticker)
@@ -117,11 +202,11 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
     df.dropna(inplace=True)
 
     features = [
-        'Open','High','Low','Close','Volume',
-        'MA_50','MA_100','MA_200','RSI',
-        'MACD','MACD_Signal','MACD_Hist',
-        'BB_Upper','BB_Lower','BB_Middle',
-        'Pct_Change','Volume_MA','Price_Range'
+        'Open', 'High', 'Low', 'Close', 'Volume',
+        'MA_50', 'MA_100', 'MA_200', 'RSI',
+        'MACD', 'MACD_Signal', 'MACD_Hist',
+        'BB_Upper', 'BB_Lower', 'BB_Middle',
+        'Pct_Change', 'Volume_MA', 'Price_Range'
     ]
     close_idx = features.index('Close')
     
@@ -140,20 +225,39 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
     X_train_t = torch.FloatTensor(X_train).to(device)
     y_train_t = torch.FloatTensor(y_train).to(device)
 
-    # 3. Model Training
-    model = MultivariateLSTMWithAttention(len(features)).to(device)
+    # 3. Model Training with Multi-Head Attention
+    model = MultiHeadAttentionModel(
+        input_size=len(features),
+        d_model=64,
+        nhead=4,
+        num_layers=2,
+        dropout=0.2
+    ).to(device)
+    
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     criterion = nn.MSELoss()
 
     model.train()
     loader = DataLoader(TensorDataset(X_train_t, y_train_t), batch_size=32, shuffle=True)
-    for _ in range(epochs):
+    
+    for epoch in range(epochs):
+        epoch_loss = 0.0
         for x, y in loader:
             optimizer.zero_grad()
             output = model(x).squeeze()
             loss = criterion(output, y)
             loss.backward()
+            
+            # Gradient clipping to prevent exploding gradients
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
             optimizer.step()
+            epoch_loss += loss.item()
+        
+        # Optional: Print training progress
+        if (epoch + 1) % 5 == 0:
+            avg_loss = epoch_loss / len(loader)
+            print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.6f}")
 
     # 4. Evaluation Metrics (Backtest on the most recent data)
     model.eval()
@@ -186,8 +290,9 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
 
     # 5. 30-Day Future Forecast (Recursive)
     future_preds_scaled = []
-    current_batch = scaled_data[-lookback:].copy() # Start with the most recent window
+    current_batch = scaled_data[-lookback:].copy()  # Start with the most recent window
 
+    model.eval()
     for _ in range(forecast_days):
         with torch.no_grad():
             input_tensor = torch.FloatTensor(current_batch).unsqueeze(0).to(device)
@@ -202,7 +307,9 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
             # Shift window: remove first day, add the predicted day
             current_batch = np.append(current_batch[1:], [new_row], axis=0)
 
-    future_inv = close_scaler.inverse_transform(np.array(future_preds_scaled).reshape(-1, 1)).flatten()
+    future_inv = close_scaler.inverse_transform(
+        np.array(future_preds_scaled).reshape(-1, 1)
+    ).flatten()
 
     # 6. Visualization Data Preparation
     dates = df['Date'].iloc[lookback:].reset_index(drop=True)
@@ -226,4 +333,3 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
         "forecast_dates": [d.strftime('%Y-%m-%d') for d in future_dates],
         "forecast_prices": [float(x) for x in future_inv]
     }
-    

@@ -47,6 +47,7 @@ class TickerRequest(BaseModel):
     ticker: str
     lookback: Optional[int] = 100
     train_size: Optional[int] = 1000
+    model: Optional[str] = "multihead"
 
 # Helper functions
 def create_access_token(data: dict):
@@ -106,9 +107,12 @@ async def predict(request: TickerRequest, username: str = Depends(verify_token))
     """
     Endpoint to get stock predictions using LSTM with attention mechanism
     """
-    from prediction_service import get_stock_predictions
-    
     try:
+        if request.model == "additive":
+            from prediction_service_additive import get_stock_predictions
+        else:
+            from prediction_service_multihead import get_stock_predictions
+        
         lookback = request.lookback if request.lookback else 60
         result = get_stock_predictions(request.ticker.upper(), lookback=lookback, epochs=15)
         
@@ -119,6 +123,11 @@ async def predict(request: TickerRequest, username: str = Depends(verify_token))
             )
         
         return result
+    except ImportError as e:
+         raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Model service not found: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
