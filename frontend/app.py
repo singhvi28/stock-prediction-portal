@@ -40,11 +40,11 @@ if "token" not in st.session_state:
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-def login(username, password):
+def login(email, password):
     try:
         response = requests.post(
             f"{API_URL}/api/auth/login",
-            json={"username": username, "password": password}
+            json={"email": email, "password": password}
         )
         if response.status_code == 200:
             data = response.json()
@@ -72,20 +72,116 @@ def get_prediction(ticker, lookback, model_type):
             st.error(f"Failed to reach API: {e}")
             return None
 
+def register(email, password):
+    try:
+        response = requests.post(
+            f"{API_URL}/api/auth/register",
+            json={"email": email, "password": password}
+        )
+        if response.status_code == 200:
+            return True, "Registration successful! Please login."
+        return False, response.json().get("detail", "Registration failed")
+    except Exception as e:
+        return False, f"Connection error: {e}"
+
+def forgot_password(email):
+    try:
+        response = requests.post(
+            f"{API_URL}/api/auth/forgot-password",
+            json={"email": email}
+        )
+        if response.status_code == 200:
+            return True, response.json().get("message")
+        return False, response.json().get("detail", "Request failed")
+    except Exception as e:
+        return False, f"Connection error: {e}"
+
+def reset_password(token, new_passwd):
+    try:
+        response = requests.post(
+            f"{API_URL}/api/auth/reset-password",
+            json={"token": token, "new_password": new_passwd}
+        )
+        if response.status_code == 200:
+            return True, "Password reset successfully!"
+        return False, response.json().get("detail", "Reset failed")
+    except Exception as e:
+        return False, f"Connection error: {e}"
+
 # --- UI LOGIC ---
-if not st.session_state.authenticated:
-    st.title("🔐 Login")
-    with st.form("login_form"):
-        user = st.text_input("Username")
-        pwd = st.text_input("Password", type="password")
-        submit = st.form_submit_button("Login")
+
+# Check for reset token in URL
+query_params = st.query_params
+reset_token = query_params.get("token")
+
+if reset_token:
+    st.title("🔐 Reset Password")
+    with st.form("reset_form"):
+        new_p1 = st.text_input("New Password", type="password")
+        new_p2 = st.text_input("Confirm Password", type="password")
+        submit_reset = st.form_submit_button("Update Password")
         
-        if submit:
-            if login(user, pwd):
-                st.success("Logged in successfully!")
-                st.rerun()
+        if submit_reset:
+            if new_p1 != new_p2:
+                st.error("Passwords do not match")
             else:
-                st.error("Invalid credentials")
+                success, msg = reset_password(reset_token, new_p1)
+                if success:
+                    st.success(msg)
+                    st.query_params.clear()
+                    st.rerun()
+                else:
+                    st.error(msg)
+    
+elif not st.session_state.authenticated:
+    st.title("🔐 Access Portal")
+    
+    tab1, tab2, tab3 = st.tabs(["Login", "Register", "Forgot Password"])
+    
+    with tab1:
+        with st.form("login_form"):
+            email = st.text_input("Email")
+            pwd = st.text_input("Password", type="password")
+            submit = st.form_submit_button("Login")
+            
+            if submit:
+                if login(email, pwd):
+                    st.success("Logged in successfully!")
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials")
+
+    with tab2:
+        with st.form("register_form"):
+            r_email = st.text_input("Email")
+            r_pwd = st.text_input("Password", type="password")
+            r_submit = st.form_submit_button("Register")
+            
+            if r_submit:
+                if r_email and r_pwd:
+                    success, msg = register(r_email, r_pwd)
+                    if success:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+                else:
+                    st.warning("Please fill all fields")
+
+    with tab3:
+        st.write("Enter your email to receive a password reset token.")
+        with st.form("forgot_form"):
+            f_email = st.text_input("Email")
+            f_submit = st.form_submit_button("Send Reset Link")
+            
+            if f_submit:
+                if f_email:
+                    success, msg = forgot_password(f_email)
+                    if success:
+                        st.info(msg)
+                    else:
+                        st.error(msg)
+                else:
+                    st.warning("Please enter your email")
 else:
     # Sidebar
     st.sidebar.title("📈 Controls")

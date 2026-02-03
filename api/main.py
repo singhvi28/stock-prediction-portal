@@ -4,10 +4,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 import jwt
-import bcrypt
 from typing import Optional
+from contextlib import asynccontextmanager
+from sqlalchemy.future import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from db import get_db, init_db, User, PasswordResetToken
+from utils import hash_password, verify_password, generate_reset_token, send_email
+from dotenv import load_dotenv
 
-app = FastAPI()
+load_dotenv()
+
+# Lifespan context for DB initialization
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 # CORS configuration
 app.add_middleware(
@@ -26,18 +39,21 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 # Security
 security = HTTPBearer()
 
-# Mock user database (in production, use a real database)
-users_db = {
-    "demo": {
-        "username": "demo",
-        "password": bcrypt.hashpw("demo123".encode(), bcrypt.gensalt()).decode(),
-    }
-}
-
 # Models
 class LoginRequest(BaseModel):
-    username: str
+    email: str
     password: str
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -61,13 +77,13 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        email: str = payload.get("sub")
+        if email is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials"
             )
-        return username
+        return email
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -80,30 +96,95 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         )
 
 # Routes
-@app.post("/api/auth/login", response_model=TokenResponse)
-async def login(request: LoginRequest):
-    user = users_db.get(request.username)
-    if not user:
+
+@app.post("/api/auth/register", response_model=TokenResponse)
+async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    # Check if user exists
+    result = await db.execute(select(User).where(User.email == request.email))
+    existing_user = result.scalars().first()
+    if existing_user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
         )
     
-    if not bcrypt.checkpw(request.password.encode(), user["password"].encode()):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password"
-        )
+    # Create user
+    hashed_pwd = hash_password(request.password)
+    new_user = User(email=request.email, password_hash=hashed_pwd)
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
     
-    access_token = create_access_token(data={"sub": request.username})
+    access_token = create_access_token(data={"sub": new_user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
+@app.post("/api/auth/login", response_model=TokenResponse)
+async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == request.email))
+    user = result.scalars().first()
+    
+    if not user or not verify_password(request.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
+    
+    access_token = create_access_token(data={"sub": user.email})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/api/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == request.email))
+    user = result.scalars().first()
+    
+    if not user:
+        # Don't reveal user existence
+        return {"message": "If this email is registered, you will receive a reset link."}
+    
+    token = generate_reset_token()
+    expires_at = datetime.utcnow() + timedelta(minutes=15)
+    
+    reset_token = PasswordResetToken(user_id=user.id, token=token, expires_at=expires_at)
+    db.add(reset_token)
+    await db.commit()
+    
+    # Send email
+    send_email(user.email, "Password Reset", token)
+    
+    return {"message": "If this email is registered, you will receive a reset link."}
+
+@app.post("/api/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(PasswordResetToken).where(PasswordResetToken.token == request.token))
+    reset_token_entry = result.scalars().first()
+    
+    if not reset_token_entry:
+        raise HTTPException(status_code=400, detail="Invalid token")
+        
+    if reset_token_entry.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Token expired")
+    
+    # Update password
+    result = await db.execute(select(User).where(User.id == reset_token_entry.user_id))
+    user = result.scalars().first()
+    
+    if not user:
+         raise HTTPException(status_code=400, detail="User not found")
+
+    user.password_hash = hash_password(request.new_password)
+    
+    # clear token
+    await db.delete(reset_token_entry)
+    await db.commit()
+    
+    return {"message": "Password updated successfully"}
+
 @app.get("/api/auth/verify")
-async def verify(username: str = Depends(verify_token)):
-    return {"username": username, "authenticated": True}
+async def verify(email: str = Depends(verify_token)):
+    return {"email": email, "authenticated": True}
 
 @app.post("/api/predict")
-async def predict(request: TickerRequest, username: str = Depends(verify_token)):
+async def predict(request: TickerRequest, email: str = Depends(verify_token)):
     """
     Endpoint to get stock predictions using LSTM with attention mechanism
     """
@@ -140,4 +221,5 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
+    # Enforce localhost to match potential connection assumptions but 0.0.0.0 is safer for containers
     uvicorn.run(app, host="0.0.0.0", port=8000)
