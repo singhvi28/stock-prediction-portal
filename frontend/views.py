@@ -159,5 +159,12 @@ def render_dashboard():
         st.session_state.last_ticker = ticker
         
         result = api_client.get_prediction(ticker, lookback, model_map[model_choice])
-        if result:
+        
+        if result and result.get("error") == "INSUFFICIENT_CREDITS":
+            cost = 3 if model_choice == "Additive Attention" else 2
+            st.error(f"⚠️ Insufficient Credits! This model requires {cost} credits.")
+            st.info("Opening purchase menu...")
+            st.session_state.show_buy_credits = True
+            st.rerun()
+        elif result:
             components.visualize_prediction(result)

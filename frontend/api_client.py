@@ -63,6 +63,8 @@ def get_prediction(ticker, lookback, model_type):
             response = requests.post(f"{API_URL}/api/predict", json=payload, headers=headers)
             if response.status_code == 200:
                 return response.json()
+            elif response.status_code == 402:
+                return {"error": "INSUFFICIENT_CREDITS"}
             else:
                 st.error(f"Error: {response.json().get('detail', 'Unknown error')}")
                 return None

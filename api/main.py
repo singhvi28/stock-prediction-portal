@@ -168,7 +168,7 @@ async def get_current_user_info(email: str = Depends(verify_token), db: AsyncSes
         "credits": user.credits
     }
 
-from db import get_db, init_db, User, PasswordResetToken, PredictionHistory
+from db import get_db, init_db, User, PasswordResetToken, PredictionHistory, CreditLedger
 from sqlalchemy import extract, desc
 
 # ... (other imports)
@@ -185,43 +185,77 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
         if not user:
              raise HTTPException(status_code=401, detail="User not found")
 
-        if request.model == "additive":
-            from prediction_service_additive import get_stock_predictions
-        else:
-            from prediction_service_multihead import get_stock_predictions
+        # Validate Model and Cost
+        model_type = request.model or "multihead"
+        cost = 3 if model_type == "additive" else 2
         
-        lookback = request.lookback if request.lookback else 60
-        result_data = get_stock_predictions(request.ticker.upper(), lookback=lookback, epochs=15)
-        
-        if "error" in result_data:
+        # Check Credits
+        if user.credits < cost:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result_data["error"]
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=f"Insufficient credits. {cost} credits required."
             )
         
-        # Save to history
-        acc = result_data.get('metrics', {}).get('directional_accuracy')
-        
-        history_entry = PredictionHistory(
+        # Deduct Credits
+        user.credits -= cost
+        ledger = CreditLedger(
             user_id=user.id,
-            ticker=request.ticker.upper(),
-            model_type=request.model or "multihead",
-            directional_accuracy=acc,
-            prediction_data=result_data
+            amount=-cost,
+            reason=f"PREDICTION_{model_type.upper()}"
         )
-        db.add(history_entry)
+        db.add(ledger)
         await db.commit()
         
-        return result_data
-    except ImportError as e:
-         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Model service not found: {str(e)}"
-        )
+        try:
+            if request.model == "additive":
+                from prediction_service_additive import get_stock_predictions
+            else:
+                from prediction_service_multihead import get_stock_predictions
+            
+            lookback = request.lookback if request.lookback else 60
+            result_data = get_stock_predictions(request.ticker.upper(), lookback=lookback, epochs=15)
+            
+            if "error" in result_data:
+                raise Exception(result_data["error"])
+            
+            # Save to history
+            acc = result_data.get('metrics', {}).get('directional_accuracy')
+            
+            history_entry = PredictionHistory(
+                user_id=user.id,
+                ticker=request.ticker.upper(),
+                model_type=model_type,
+                directional_accuracy=acc,
+                prediction_data=result_data
+            )
+            db.add(history_entry)
+            await db.commit()
+            
+            return result_data
+            
+        except Exception as e:
+            # Refund on failure
+            user.credits += cost
+            refund_ledger = CreditLedger(
+                user_id=user.id,
+                amount=cost,
+                reason=f"REFUND_FAILED_PREDICTION"
+            )
+            db.add(refund_ledger)
+            await db.commit()
+            
+            if isinstance(e, HTTPException):
+                raise e
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Prediction failed: {str(e)}"
+            )
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Prediction failed: {str(e)}"
+            detail=f"An error occurred: {str(e)}"
         )
 
 @app.get("/api/history")
