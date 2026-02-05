@@ -1,39 +1,10 @@
 import streamlit as st
-import requests
-import plotly.graph_objects as go
-import pandas as pd
-from datetime import datetime
+import api_client
+from components import render_footer
+from views import render_auth_page, show_history_page, render_dashboard
 
 # Configuration
-API_URL = "http://localhost:8000"
-
 st.set_page_config(page_title="Stock Prediction Dashboard", layout="wide")
-
-def render_footer():
-    st.markdown(
-        """
-        <style>
-        .footer {
-            position: fixed;
-            left: 0;
-            bottom: 0;
-            width: 100%;
-            background-color: #0e1117;
-            color: #9aa0a6;
-            text-align: center;
-            padding: 10px;
-            font-size: 13px;
-            z-index: 9999;
-        }
-        </style>
-
-        <div class="footer">
-            ⚠️ This dashboard is for educational and research purposes only.  
-            It is not financial advice. Use at your own risk.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 # Session State Initialization
 if "token" not in st.session_state:
@@ -41,77 +12,7 @@ if "token" not in st.session_state:
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-def login(email, password):
-    try:
-        response = requests.post(
-            f"{API_URL}/api/auth/login",
-            json={"email": email, "password": password}
-        )
-        if response.status_code == 200:
-            data = response.json()
-            st.session_state.token = data["access_token"]
-            st.session_state.authenticated = True
-            return True
-        return False
-    except Exception as e:
-        st.error(f"Connection error: {e}")
-        return False
-
-def get_prediction(ticker, lookback, model_type):
-    headers = {"Authorization": f"Bearer {st.session_state.token}"}
-    payload = {"ticker": ticker, "lookback": lookback, "model": model_type}
-    
-    with st.spinner(f"Training selected model and generating 30-day forecast for {ticker}..."):
-        try:
-            response = requests.post(f"{API_URL}/api/predict", json=payload, headers=headers)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                st.error(f"Error: {response.json().get('detail', 'Unknown error')}")
-                return None
-        except Exception as e:
-            st.error(f"Failed to reach API: {e}")
-            return None
-
-def register(email, password):
-    try:
-        response = requests.post(
-            f"{API_URL}/api/auth/register",
-            json={"email": email, "password": password}
-        )
-        if response.status_code == 200:
-            return True, "Registration successful! Please login."
-        return False, response.json().get("detail", "Registration failed")
-    except Exception as e:
-        return False, f"Connection error: {e}"
-
-def forgot_password(email):
-    try:
-        response = requests.post(
-            f"{API_URL}/api/auth/forgot-password",
-            json={"email": email}
-        )
-        if response.status_code == 200:
-            return True, response.json().get("message")
-        return False, response.json().get("detail", "Request failed")
-    except Exception as e:
-        return False, f"Connection error: {e}"
-
-def reset_password(token, new_passwd):
-    try:
-        response = requests.post(
-            f"{API_URL}/api/auth/reset-password",
-            json={"token": token, "new_password": new_passwd}
-        )
-        if response.status_code == 200:
-            return True, "Password reset successfully!"
-        return False, response.json().get("detail", "Reset failed")
-    except Exception as e:
-        return False, f"Connection error: {e}"
-
-# --- UI LOGIC ---
-
-# Check for reset token in URL
+# Check for reset token in URL (special flow)
 query_params = st.query_params
 reset_token = query_params.get("token")
 
@@ -126,208 +27,22 @@ if reset_token:
             if new_p1 != new_p2:
                 st.error("Passwords do not match")
             else:
-                success, msg = reset_password(reset_token, new_p1)
+                success, msg = api_client.reset_password(reset_token, new_p1)
                 if success:
                     st.success(msg)
                     st.query_params.clear()
                     st.rerun()
                 else:
-                    st.error(msg)
-    
-def render_dashboard():
-    st.title(f"Analysis for {st.session_state.get('last_ticker', 'Stock')}")
-    # ... existing visualization logic ...
-
-def show_history_page():
-    st.title("📜 Prediction History")
-    
-    # Filter Controls
-    col1, col2 = st.columns(2)
-    with col1:
-        month = st.selectbox("Month", range(1, 13), index=datetime.now().month-1, format_func=lambda x: datetime(2000, x, 1).strftime('%B'))
-    with col2:
-        year = st.number_input("Year", min_value=2024, max_value=datetime.now().year, value=datetime.now().year)
-
-    # Fetch History
-    try:
-        headers = {"Authorization": f"Bearer {st.session_state.token}"}
-        response = requests.get(
-            f"{API_URL}/api/history", 
-            params={"month": month, "year": year, "limit": 20},
-            headers=headers
-        )
-        
-        if response.status_code == 200:
-            history = response.json()
-            
-            if not history:
-                st.info("No prediction history found for this period.")
-                return
-
-            # Display History List
-            for item in history:
-                timestamp = datetime.fromisoformat(item['created_at'])
-                with st.expander(f"{item['ticker']} - {timestamp.strftime('%Y-%m-%d %H:%M')} ({item['model_type']})"):
-                    # Quick Metrics
-                    data = item['prediction_data']
-                    if 'metrics' in data:
-                        m1, m2, m3, m4 = st.columns(4)
-                        m1.metric("RMSE", f"${data['metrics']['rmse']:.2f}")
-                        m2.metric("MAE", f"${data['metrics']['mae']:.2f}")
-                        m3.metric("MAPE", f"{data['metrics']['mape']:.2f}%")
-                        m4.metric("Directional Accuracy", f"{data['metrics']['directional_accuracy']:.2f}%")
-                    
-                    # Store selected data in session state to visualize
-                    if st.button("Load Visualization", key=f"btn_{item['id']}"):
-                         visualize_prediction(data, show_metrics=False)
-
-        else:
-            st.error("Failed to fetch history")
-            
-    except Exception as e:
-        st.error(f"Error: {e}")
-
-def visualize_prediction(result, show_metrics=True):
-    st.markdown(f"### Historical Analysis: {result['ticker']}")
-
-    # Display Metrics if available and requested
-    if show_metrics and 'metrics' in result:
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("RMSE", f"${result['metrics']['rmse']:.2f}")
-        m2.metric("MAE", f"${result['metrics']['mae']:.2f}")
-        m3.metric("MAPE", f"{result['metrics']['mape']:.2f}%")
-        m4.metric("Directional Accuracy", f"{result['metrics']['directional_accuracy']:.2f}%")
-    
-    historical_dates = result.get('historical_dates', [])
-    historical_prices = result.get('historical_prices', [])
-    model_historical_predictions = result.get('model_historical_predictions', [])
-    forecast_dates = result.get('forecast_dates', [])
-    forecast_prices = result.get('forecast_prices', [])
-    
-    fig = go.Figure()
-    
-    # Add Historical Data (Actual)
-    fig.add_trace(go.Scatter(
-        x=historical_dates,
-        y=historical_prices,
-        mode='lines',
-        name='Actual Price',
-        line=dict(color='#818cf8', width=2)
-    ))
-
-    # Add Historical Model Predictions
-    if model_historical_predictions:
-            fig.add_trace(go.Scatter(
-            x=historical_dates,
-            y=model_historical_predictions,
-            mode='lines',
-            name='Model Fitted (Past)',
-            line=dict(color='#34d399', width=1.5, dash='dot'),
-            opacity=0.7
-        ))
-
-    # Add Forecast Data
-    if historical_dates and model_historical_predictions and forecast_dates and forecast_prices:
-        viz_forecast_dates = [historical_dates[-1]] + forecast_dates
-        viz_forecast_prices = [model_historical_predictions[-1]] + forecast_prices
-        
-        fig.add_trace(go.Scatter(
-            x=viz_forecast_dates,
-            y=viz_forecast_prices,
-            mode='lines',
-            name='Future Forecast',
-            line=dict(color='#fb923c', width=2, dash='dash')
-        ))
-
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color="#9aa0a6"),
-        xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
-        yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)', title="Price ($)"),
-        margin=dict(l=0, r=0, t=30, b=0),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        hovermode="x unified"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-
-# --- UI LOGIC ---
-if not st.session_state.authenticated:
-    # ... (existing login/register logic stays same) ...
-    st.title("🔐 Access Portal")
-    
-    tab1, tab2, tab3 = st.tabs(["Login", "Register", "Forgot Password"])
-    
-    with tab1:
-        with st.form("login_form"):
-            email = st.text_input("Email")
-            pwd = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Login")
-            
-            if submit:
-                if login(email, pwd):
-                    st.success("Logged in successfully!")
-                    st.rerun()
-                else:
-                    st.error("Invalid credentials")
-
-    with tab2:
-        with st.form("register_form"):
-            r_email = st.text_input("Email")
-            r_pwd = st.text_input("Password", type="password")
-            r_submit = st.form_submit_button("Register")
-            
-            if r_submit:
-                if r_email and r_pwd:
-                    success, msg = register(r_email, r_pwd)
-                    if success:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
-                else:
-                    st.warning("Please fill all fields")
-
-    with tab3:
-        st.write("Enter your email to receive a password reset token.")
-        with st.form("forgot_form"):
-            f_email = st.text_input("Email")
-            f_submit = st.form_submit_button("Send Reset Link")
-            
-            if f_submit:
-                if f_email:
-                    success, msg = forgot_password(f_email)
-                    if success:
-                        st.info(msg)
-                    else:
-                        st.error(msg)
-                else:
-                    st.warning("Please enter your email")
+                    st.error(msg) 
+elif not st.session_state.authenticated:
+    render_auth_page()
 else:
     # Sidebar Navigation
     st.sidebar.title("Navigation")
     page = st.sidebar.radio("Go to", ["Dashboard", "History"])
     
     if page == "Dashboard":
-        st.sidebar.title("📈 Controls")
-        ticker = st.sidebar.text_input("Stock Ticker", value="AAPL").upper()
-        lookback = 60
-        
-        model_choice = st.sidebar.selectbox(
-            "Prediction Model",
-            ["Multihead Attention", "Additive Attention"]
-        )
-        
-        model_map = {
-            "Multihead Attention": "multihead",
-            "Additive Attention": "additive"
-        }
-        
-        if st.sidebar.button("Run Prediction & Forecast"):
-            result = get_prediction(ticker, lookback, model_map[model_choice])
-            if result:
-                visualize_prediction(result)
+        render_dashboard()
                 
     elif page == "History":
         show_history_page()
