@@ -35,7 +35,14 @@ class PasswordResetToken(Base):
 
     user: Mapped["User"] = relationship()
 
-from sqlalchemy.dialects.postgresql import JSONB
+# Determine JSON type based on DB dialect
+if DATABASE_URL and "sqlite" in DATABASE_URL:
+    from sqlalchemy import JSON
+    JSON_TYPE = JSON
+else:
+    from sqlalchemy.dialects.postgresql import JSONB
+    JSON_TYPE = JSONB
+
 from sqlalchemy import Float
 
 class PredictionHistory(Base):
@@ -46,7 +53,7 @@ class PredictionHistory(Base):
     ticker: Mapped[str] = mapped_column(String, index=True)
     model_type: Mapped[str] = mapped_column(String)
     directional_accuracy: Mapped[float] = mapped_column(Float, nullable=True)
-    prediction_data: Mapped[dict] = mapped_column(JSONB)
+    prediction_data: Mapped[dict] = mapped_column(JSON_TYPE)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     user: Mapped["User"] = relationship()
