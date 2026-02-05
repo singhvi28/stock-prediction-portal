@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from db import get_db, init_db, User, PasswordResetToken
-from utils import hash_password, verify_password, generate_reset_token, send_email
+from utils import hash_password, verify_password, generate_reset_token, send_email, verify_token, get_current_user
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -31,13 +31,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# JWT Configuration
-SECRET_KEY = "your-secret-key-change-in-production"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-# Security
-security = HTTPBearer()
+# Import and include payment router
+from payment import router as payment_router
+app.include_router(payment_router)
 
 # Models
 class LoginRequest(BaseModel):
@@ -66,34 +62,9 @@ class TickerRequest(BaseModel):
     model: Optional[str] = "multihead"
 
 # Helper functions
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+from utils import create_access_token
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        token = credentials.credentials
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
-            )
-        return email
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired"
-        )
-    except jwt.JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials"
-        )
+# Routes
 
 # Routes
 
@@ -184,6 +155,18 @@ async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depen
 @app.get("/api/auth/verify")
 async def verify(email: str = Depends(verify_token)):
     return {"email": email, "authenticated": True}
+
+@app.get("/api/auth/me")
+async def get_current_user_info(email: str = Depends(verify_token), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return {
+        "id": user.id,
+        "email": user.email,
+        "credits": user.credits
+    }
 
 from db import get_db, init_db, User, PasswordResetToken, PredictionHistory
 from sqlalchemy import extract, desc

@@ -87,3 +87,30 @@ def fetch_history(month, year, limit=20):
     except Exception as e:
         st.error(f"Error: {e}")
         return None
+
+def get_user_info():
+    try:
+        if not st.session_state.token:
+            return None
+        headers = {"Authorization": f"Bearer {st.session_state.token}"}
+        response = requests.get(f"{API_URL}/api/auth/me", headers=headers)
+        if response.status_code == 200:
+            return response.json()
+        return None
+    except Exception:
+        return None
+
+def create_order(credits):
+    try:
+        headers = {"Authorization": f"Bearer {st.session_state.token}"}
+        payload = {"credits": credits}
+        response = requests.post(f"{API_URL}/payment/order", json=payload, headers=headers)
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            st.error(f"Order creation failed: {response.text}")
+            return None
+    except Exception as e:
+        st.error(f"Connection error: {e}")
+        return None

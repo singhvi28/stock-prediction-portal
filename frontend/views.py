@@ -89,9 +89,58 @@ def show_history_page():
                         components.visualize_prediction(data, show_metrics=False)
 
 def render_dashboard():
+    # Fetch latest user info
+    user_info = api_client.get_user_info()
+    credits = user_info.get("credits", 0) if user_info else 0
+    st.session_state.credits = credits
+
     st.title(f"Analysis for {st.session_state.get('last_ticker', 'Stock')}")
     
     st.sidebar.title("📈 Controls")
+    
+    # Credit Display
+    st.sidebar.markdown(f"### 💎 Credits: {credits}")
+    if st.sidebar.button("Buy Credits"):
+        st.session_state.show_buy_credits = not st.session_state.get("show_buy_credits", False)
+    
+    if st.session_state.get("show_buy_credits", False):
+        st.markdown("---")
+        st.markdown("## 💎 Purchase Credits")
+        st.info("Rate: 1 Credit = ₹10. Secure payment via Razorpay.")
+        
+        p1, p2, p3 = st.columns(3)
+        
+        with p1:
+            st.markdown("### Starter")
+            st.markdown("## ₹100")
+            st.caption("10 Credits")
+            if st.button("Buy Starter", key="pkg_10"):
+               with st.spinner("Creating Order..."):
+                   order = api_client.create_order(10)
+                   if order:
+                       components.render_razorpay_checkout(order)
+
+        with p2:
+            st.markdown("### Pro")
+            st.markdown("## ₹500")
+            st.caption("50 Credits")
+            if st.button("Buy Pro", key="pkg_50"):
+                with st.spinner("Creating Order..."):
+                   order = api_client.create_order(50)
+                   if order:
+                       components.render_razorpay_checkout(order)
+
+        with p3:
+            st.markdown("### Whale")
+            st.markdown("## ₹1000")
+            st.caption("100 Credits")
+            if st.button("Buy Whale", key="pkg_100"):
+                with st.spinner("Creating Order..."):
+                   order = api_client.create_order(100)
+                   if order:
+                       components.render_razorpay_checkout(order)
+        st.markdown("---")
+
     ticker = st.sidebar.text_input("Stock Ticker", value="AAPL").upper()
     lookback = 60
     

@@ -1,5 +1,36 @@
 import streamlit as st
 import plotly.graph_objects as go
+import streamlit.components.v1 as components
+
+def render_razorpay_checkout(order_data):
+    html_code = f"""
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <button id="rzp-button1" style="display:none;">Pay</button>
+    <script>
+    var options = {{
+        "key": "{order_data['key_id']}",
+        "amount": "{order_data['amount']}", 
+        "currency": "{order_data['currency']}",
+        "name": "{order_data['name']}",
+        "description": "{order_data['description']}",
+        "order_id": "{order_data['order_id']}", 
+        "handler": function (response){{
+            // Alert user and reload to reflect credits (webhook processing delay might apply)
+            alert("Payment Successful! Payment ID: " + response.razorpay_payment_id + ". Please refresh the page in a few seconds to see updated credits.");
+        }},
+        "theme": {{
+            "color": "#0e1117"
+        }}
+    }};
+    var rzp1 = new Razorpay(options);
+    rzp1.on('payment.failed', function (response){{
+        alert("Payment Failed: " + response.error.description);
+    }});
+    // Auto open
+    rzp1.open();
+    </script>
+    """
+    components.html(html_code, height=450)
 
 def render_footer():
     st.markdown(
