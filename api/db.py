@@ -35,6 +35,22 @@ class PasswordResetToken(Base):
 
     user: Mapped["User"] = relationship()
 
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Float
+
+class PredictionHistory(Base):
+    __tablename__ = "prediction_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    ticker: Mapped[str] = mapped_column(String, index=True)
+    model_type: Mapped[str] = mapped_column(String)
+    directional_accuracy: Mapped[float] = mapped_column(Float, nullable=True)
+    prediction_data: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session

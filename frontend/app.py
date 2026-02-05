@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import plotly.graph_objects as go
 import pandas as pd
+from datetime import datetime
 
 # Configuration
 API_URL = "http://localhost:8000"
@@ -133,7 +134,128 @@ if reset_token:
                 else:
                     st.error(msg)
     
-elif not st.session_state.authenticated:
+def render_dashboard():
+    st.title(f"Analysis for {st.session_state.get('last_ticker', 'Stock')}")
+    # ... existing visualization logic ...
+
+def show_history_page():
+    st.title("📜 Prediction History")
+    
+    # Filter Controls
+    col1, col2 = st.columns(2)
+    with col1:
+        month = st.selectbox("Month", range(1, 13), index=datetime.now().month-1, format_func=lambda x: datetime(2000, x, 1).strftime('%B'))
+    with col2:
+        year = st.number_input("Year", min_value=2024, max_value=datetime.now().year, value=datetime.now().year)
+
+    # Fetch History
+    try:
+        headers = {"Authorization": f"Bearer {st.session_state.token}"}
+        response = requests.get(
+            f"{API_URL}/api/history", 
+            params={"month": month, "year": year, "limit": 20},
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            history = response.json()
+            
+            if not history:
+                st.info("No prediction history found for this period.")
+                return
+
+            # Display History List
+            for item in history:
+                timestamp = datetime.fromisoformat(item['created_at'])
+                with st.expander(f"{item['ticker']} - {timestamp.strftime('%Y-%m-%d %H:%M')} ({item['model_type']})"):
+                    # Quick Metrics
+                    data = item['prediction_data']
+                    if 'metrics' in data:
+                        m1, m2, m3, m4 = st.columns(4)
+                        m1.metric("RMSE", f"${data['metrics']['rmse']:.2f}")
+                        m2.metric("MAE", f"${data['metrics']['mae']:.2f}")
+                        m3.metric("MAPE", f"{data['metrics']['mape']:.2f}%")
+                        m4.metric("Directional Accuracy", f"{data['metrics']['directional_accuracy']:.2f}%")
+                    
+                    # Store selected data in session state to visualize
+                    if st.button("Load Visualization", key=f"btn_{item['id']}"):
+                         visualize_prediction(data, show_metrics=False)
+
+        else:
+            st.error("Failed to fetch history")
+            
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+def visualize_prediction(result, show_metrics=True):
+    st.markdown(f"### Historical Analysis: {result['ticker']}")
+
+    # Display Metrics if available and requested
+    if show_metrics and 'metrics' in result:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("RMSE", f"${result['metrics']['rmse']:.2f}")
+        m2.metric("MAE", f"${result['metrics']['mae']:.2f}")
+        m3.metric("MAPE", f"{result['metrics']['mape']:.2f}%")
+        m4.metric("Directional Accuracy", f"{result['metrics']['directional_accuracy']:.2f}%")
+    
+    historical_dates = result.get('historical_dates', [])
+    historical_prices = result.get('historical_prices', [])
+    model_historical_predictions = result.get('model_historical_predictions', [])
+    forecast_dates = result.get('forecast_dates', [])
+    forecast_prices = result.get('forecast_prices', [])
+    
+    fig = go.Figure()
+    
+    # Add Historical Data (Actual)
+    fig.add_trace(go.Scatter(
+        x=historical_dates,
+        y=historical_prices,
+        mode='lines',
+        name='Actual Price',
+        line=dict(color='#818cf8', width=2)
+    ))
+
+    # Add Historical Model Predictions
+    if model_historical_predictions:
+            fig.add_trace(go.Scatter(
+            x=historical_dates,
+            y=model_historical_predictions,
+            mode='lines',
+            name='Model Fitted (Past)',
+            line=dict(color='#34d399', width=1.5, dash='dot'),
+            opacity=0.7
+        ))
+
+    # Add Forecast Data
+    if historical_dates and model_historical_predictions and forecast_dates and forecast_prices:
+        viz_forecast_dates = [historical_dates[-1]] + forecast_dates
+        viz_forecast_prices = [model_historical_predictions[-1]] + forecast_prices
+        
+        fig.add_trace(go.Scatter(
+            x=viz_forecast_dates,
+            y=viz_forecast_prices,
+            mode='lines',
+            name='Future Forecast',
+            line=dict(color='#fb923c', width=2, dash='dash')
+        ))
+
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color="#9aa0a6"),
+        xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
+        yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)', title="Price ($)"),
+        margin=dict(l=0, r=0, t=30, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# --- UI LOGIC ---
+if not st.session_state.authenticated:
+    # ... (existing login/register logic stays same) ...
     st.title("🔐 Access Portal")
     
     tab1, tab2, tab3 = st.tabs(["Login", "Register", "Forgot Password"])
@@ -183,112 +305,37 @@ elif not st.session_state.authenticated:
                 else:
                     st.warning("Please enter your email")
 else:
-    # Sidebar
-    st.sidebar.title("📈 Controls")
-    ticker = st.sidebar.text_input("Stock Ticker", value="AAPL").upper()
+    # Sidebar Navigation
+    st.sidebar.title("Navigation")
+    page = st.sidebar.radio("Go to", ["Dashboard", "History"])
     
-    # Fixed lookback window as per requirement
-    lookback = 60
-    
-    # Model Selection
-    model_choice = st.sidebar.selectbox(
-        "Prediction Model",
-        ["Multihead Attention", "Additive Attention"]
-    )
-    
-    model_map = {
-        "Multihead Attention": "multihead",
-        "Additive Attention": "additive"
-    }
-    
-    if st.sidebar.button("Run Prediction & Forecast"):
-        result = get_prediction(ticker, lookback, model_map[model_choice])
+    if page == "Dashboard":
+        st.sidebar.title("📈 Controls")
+        ticker = st.sidebar.text_input("Stock Ticker", value="AAPL").upper()
+        lookback = 60
         
-        if result:
-            st.title(f"Analysis for {result['ticker']}")
-            
-            # 1. Metrics Row
-            if 'metrics' in result:
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("RMSE", f"${result['metrics']['rmse']:.2f}")
-                m2.metric("MAE", f"${result['metrics']['mae']:.2f}")
-                m3.metric("MAPE", f"{result['metrics']['mape']:.2f}%")
-                m4.metric("Directional Accuracy", f"{result['metrics']['directional_accuracy']:.2f}%")
-
-            # 2. Main Forecast Plot
-            st.markdown("### Price & Extended Forecast")
-            
-            historical_dates = result.get('historical_dates', [])
-            historical_prices = result.get('historical_prices', [])
-            model_historical_predictions = result.get('model_historical_predictions', [])
-            forecast_dates = result.get('forecast_dates', [])
-            forecast_prices = result.get('forecast_prices', [])
-            
-            # Create Plotly Graph
-            fig = go.Figure()
-
-            # Add Historical Data (Actual)
-            fig.add_trace(go.Scatter(
-                x=historical_dates,
-                y=historical_prices,
-                mode='lines',
-                name='Actual Price',
-                line=dict(color='#818cf8', width=2)
-            ))
-
-            # Add Historical Model Predictions
-            if model_historical_predictions:
-                 fig.add_trace(go.Scatter(
-                    x=historical_dates,
-                    y=model_historical_predictions,
-                    mode='lines',
-                    name='Model Fitted (Past)',
-                    line=dict(color='#34d399', width=1.5, dash='dot'),
-                    opacity=0.7
-                ))
-
-            # Add Forecast Data
-            # Connect the last historical point to the first forecast point for continuity
-            if historical_dates and model_historical_predictions and forecast_dates and forecast_prices:
-                 # Prepend last model prediction to forecast for visual continuity
-                viz_forecast_dates = [historical_dates[-1]] + forecast_dates
-                viz_forecast_prices = [model_historical_predictions[-1]] + forecast_prices
+        model_choice = st.sidebar.selectbox(
+            "Prediction Model",
+            ["Multihead Attention", "Additive Attention"]
+        )
+        
+        model_map = {
+            "Multihead Attention": "multihead",
+            "Additive Attention": "additive"
+        }
+        
+        if st.sidebar.button("Run Prediction & Forecast"):
+            result = get_prediction(ticker, lookback, model_map[model_choice])
+            if result:
+                visualize_prediction(result)
                 
-                fig.add_trace(go.Scatter(
-                    x=viz_forecast_dates,
-                    y=viz_forecast_prices,
-                    mode='lines',
-                    name='Future Forecast',
-                    line=dict(color='#fb923c', width=2, dash='dash')
-                ))
+    elif page == "History":
+        show_history_page()
 
-            fig.update_layout(
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(color="#9aa0a6"),
-                xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
-                yaxis=dict(
-                    showgrid=True, 
-                    gridcolor='rgba(255,255,255,0.1)',
-                    title="Price ($)"
-                ),
-                margin=dict(l=0, r=0, t=30, b=0),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                ),
-                hovermode="x unified"
-            )
-
-            st.plotly_chart(fig, use_container_width=True)
-
+    st.sidebar.divider()
     if st.sidebar.button("Logout"):
         st.session_state.token = None
         st.session_state.authenticated = False
         st.rerun()
     
-    # Footer
     render_footer()

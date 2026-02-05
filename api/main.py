@@ -183,27 +183,51 @@ async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depen
 async def verify(email: str = Depends(verify_token)):
     return {"email": email, "authenticated": True}
 
+from db import get_db, init_db, User, PasswordResetToken, PredictionHistory
+from sqlalchemy import extract, desc
+
+# ... (other imports)
+
 @app.post("/api/predict")
-async def predict(request: TickerRequest, email: str = Depends(verify_token)):
+async def predict(request: TickerRequest, email: str = Depends(verify_token), db: AsyncSession = Depends(get_db)):
     """
     Endpoint to get stock predictions using LSTM with attention mechanism
     """
     try:
+        # Get user ID
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalars().first()
+        if not user:
+             raise HTTPException(status_code=401, detail="User not found")
+
         if request.model == "additive":
             from prediction_service_additive import get_stock_predictions
         else:
             from prediction_service_multihead import get_stock_predictions
         
         lookback = request.lookback if request.lookback else 60
-        result = get_stock_predictions(request.ticker.upper(), lookback=lookback, epochs=15)
+        result_data = get_stock_predictions(request.ticker.upper(), lookback=lookback, epochs=15)
         
-        if "error" in result:
+        if "error" in result_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result["error"]
+                detail=result_data["error"]
             )
         
-        return result
+        # Save to history
+        acc = result_data.get('metrics', {}).get('directional_accuracy')
+        
+        history_entry = PredictionHistory(
+            user_id=user.id,
+            ticker=request.ticker.upper(),
+            model_type=request.model or "multihead",
+            directional_accuracy=acc,
+            prediction_data=result_data
+        )
+        db.add(history_entry)
+        await db.commit()
+        
+        return result_data
     except ImportError as e:
          raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -214,6 +238,48 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Prediction failed: {str(e)}"
         )
+
+@app.get("/api/history")
+async def get_history(
+    page: int = 1, 
+    limit: int = 10, 
+    month: Optional[int] = None, 
+    year: Optional[int] = None,
+    email: str = Depends(verify_token),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+    if not user:
+         raise HTTPException(status_code=401, detail="User not found")
+
+    query = select(PredictionHistory).where(PredictionHistory.user_id == user.id)
+    
+    if month and year:
+        query = query.where(extract('month', PredictionHistory.created_at) == month)
+        query = query.where(extract('year', PredictionHistory.created_at) == year)
+    
+    # Order by newest first
+    query = query.order_by(desc(PredictionHistory.created_at))
+    
+    # Pagination
+    offset = (page - 1) * limit
+    query = query.offset(offset).limit(limit)
+    
+    result = await db.execute(query)
+    history = result.scalars().all()
+    
+    return [
+        {
+            "id": h.id,
+            "ticker": h.ticker,
+            "model_type": h.model_type,
+            "directional_accuracy": h.directional_accuracy,
+            "created_at": h.created_at,
+            "prediction_data": h.prediction_data
+        }
+        for h in history
+    ]
 
 @app.get("/api/health")
 async def health():
