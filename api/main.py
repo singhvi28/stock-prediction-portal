@@ -145,11 +145,13 @@ async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Dep
     expires_at = datetime.utcnow() + timedelta(minutes=15)
     
     reset_token = PasswordResetToken(user_id=user.id, token=token, expires_at=expires_at)
+    
+    recipient_email = user.email
     db.add(reset_token)
     await db.commit()
     
     # Send email
-    send_email(user.email, "Password Reset", token)
+    send_email(recipient_email, "Password Reset", token)
     
     return {"message": "If this email is registered, you will receive a reset link."}
 
