@@ -89,7 +89,7 @@ def predict_task(self, ticker: str, model_type: str, lookback: int, user_id: int
         # Save to DB
         with Session(engine) as session:
             with session.begin():
-                from db import PredictionHistory, CreditLedger, User
+                from db import PredictionHistory # Keep PredictionHistory if not global
                 
                 acc = result_data.get('metrics', {}).get('directional_accuracy')
                 
