@@ -72,3 +72,53 @@ def process_payment(self, payment_id: str, order_id: str):
             lock.release()
         except redis.exceptions.LockError:
             pass # Lock might have expired or released
+
+@celery_app.task(bind=True)
+def predict_task(self, ticker: str, model_type: str, lookback: int, user_id: int):
+    try:
+        if model_type == "additive":
+            from prediction_service_additive import get_stock_predictions
+        else:
+            from prediction_service_multihead import get_stock_predictions
+        
+        result_data = get_stock_predictions(ticker.upper(), lookback=lookback, epochs=15)
+        
+        if "error" in result_data:
+            raise Exception(result_data["error"])
+            
+        # Save to DB
+        with Session(engine) as session:
+            with session.begin():
+                from db import PredictionHistory, CreditLedger, User
+                
+                acc = result_data.get('metrics', {}).get('directional_accuracy')
+                
+                history_entry = PredictionHistory(
+                    user_id=user_id,
+                    ticker=ticker.upper(),
+                    model_type=model_type,
+                    directional_accuracy=acc,
+                    prediction_data=result_data
+                )
+                session.add(history_entry)
+        
+        return result_data
+
+    except Exception as e:
+        # Refund credits on failure
+        try:
+             with Session(engine) as session:
+                with session.begin():
+                    cost = 3 if model_type == "additive" else 2
+                    user = session.get(User, user_id)
+                    if user:
+                        user.credits += cost
+                        session.add(CreditLedger(
+                            user_id=user_id,
+                            amount=cost,
+                            reason="REFUND_FAILED_TASK"
+                        ))
+        except Exception as refund_err:
+            print(f"Failed to refund: {refund_err}")
+            
+        raise self.retry(exc=e, max_retries=1)

@@ -206,50 +206,12 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
         db.add(ledger)
         await db.commit()
         
-        try:
-            if request.model == "additive":
-                from prediction_service_additive import get_stock_predictions
-            else:
-                from prediction_service_multihead import get_stock_predictions
-            
-            lookback = request.lookback if request.lookback else 60
-            result_data = get_stock_predictions(request.ticker.upper(), lookback=lookback, epochs=15)
-            
-            if "error" in result_data:
-                raise Exception(result_data["error"])
-            
-            # Save to history
-            acc = result_data.get('metrics', {}).get('directional_accuracy')
-            
-            history_entry = PredictionHistory(
-                user_id=user.id,
-                ticker=request.ticker.upper(),
-                model_type=model_type,
-                directional_accuracy=acc,
-                prediction_data=result_data
-            )
-            db.add(history_entry)
-            await db.commit()
-            
-            return result_data
-            
-        except Exception as e:
-            # Refund on failure
-            user.credits += cost
-            refund_ledger = CreditLedger(
-                user_id=user.id,
-                amount=cost,
-                reason=f"REFUND_FAILED_PREDICTION"
-            )
-            db.add(refund_ledger)
-            await db.commit()
-            
-            if isinstance(e, HTTPException):
-                raise e
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Prediction failed: {str(e)}"
-            )
+        # Dispatch Task
+        from tasks import predict_task
+        task = predict_task.delay(request.ticker, model_type, request.lookback, user.id)
+        
+        return {"task_id": task.id, "status": "processing"}
+
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
@@ -257,6 +219,20 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred: {str(e)}"
         )
+
+@app.get("/api/predict/{task_id}")
+async def get_prediction_status(task_id: str):
+    from celery.result import AsyncResult
+    from worker import celery_app
+    
+    result = AsyncResult(task_id, app=celery_app)
+    
+    if result.state == "SUCCESS":
+        return {"status": "completed", "result": result.result}
+    elif result.state == "FAILURE":
+        return {"status": "failed", "error": str(result.result)}
+    else:
+        return {"status": "processing"}
 
 @app.get("/api/history")
 async def get_history(

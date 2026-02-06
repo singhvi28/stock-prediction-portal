@@ -4,11 +4,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672//")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 celery_app = Celery(
     "worker",
-    broker=REDIS_URL,
+    broker=RABBITMQ_URL,
     backend=REDIS_URL
 )
 

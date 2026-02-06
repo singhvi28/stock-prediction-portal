@@ -58,19 +58,42 @@ def get_prediction(ticker, lookback, model_type):
     headers = {"Authorization": f"Bearer {st.session_state.token}"}
     payload = {"ticker": ticker, "lookback": lookback, "model": model_type}
     
-    with st.spinner(f"Training selected model and generating 30-day forecast for {ticker}..."):
+    with st.spinner(f"Initiating prediction for {ticker}..."):
         try:
             response = requests.post(f"{API_URL}/api/predict", json=payload, headers=headers)
-            if response.status_code == 200:
-                return response.json()
-            elif response.status_code == 402:
+            if response.status_code == 402:
                 return {"error": "INSUFFICIENT_CREDITS"}
-            else:
+            elif response.status_code != 200:
                 st.error(f"Error: {response.json().get('detail', 'Unknown error')}")
                 return None
+            
+            task_data = response.json()
+            task_id = task_data.get("task_id")
+                
         except Exception as e:
             st.error(f"Failed to reach API: {e}")
             return None
+
+    # Polling Loop
+    import time
+    with st.spinner("Model is training... (This may take up to 30 seconds)"):
+        for _ in range(60): # 60 * 1s = 1 min max wait
+            try:
+                status_res = requests.get(f"{API_URL}/api/predict/{task_id}", headers=headers)
+                if status_res.status_code == 200:
+                    data = status_res.json()
+                    if data["status"] == "completed":
+                        return data["result"]
+                    elif data["status"] == "failed":
+                        st.error(f"Prediction failed: {data.get('error')}")
+                        return None
+                time.sleep(1)
+            except Exception as e:
+                st.error(f"Polling error: {e}")
+                return None
+        
+        st.error("Prediction timed out.")
+        return None
 
 def fetch_history(month, year, limit=20):
     try:
