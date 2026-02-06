@@ -39,7 +39,24 @@ This directory contains the automated unit tests for the Stock Prediction API. T
     *   Verifies that the credits are refunded (Balance remains unchanged).
     *   Checks for the `REFUND_FAILED_PREDICTION` ledger entry.
 
-### 4. `conftest.py`
+### 4. `test_worker.py`
+**Purpose**: Verifies the Celery background worker logic (Redis + DB).
+*   **`test_process_payment_idempotency`**:
+    *   Simulates a duplicate webhook event.
+    *   Ensures the worker returns "Already Processed" without touching the DB.
+*   **`test_process_payment_locked`**:
+    *   Simulates a race condition where the resource is already locked.
+    *   Verifies that the task raises a `Retry` exception to be requeued.
+*   **`test_process_payment_success`**:
+    *   Verifies the full happy path:
+        1.  Acquires Lock.
+        2.  Updates Transaction to `SUCCESS`.
+        3.  Adds Credits to User.
+        4.  Sets Redis `processed` key.
+*   **`test_transaction_not_found`**:
+    *   Verifies graceful handling when the transaction ID doesn't exist in the DB.
+
+### 5. `conftest.py`
 **Purpose**: Global test configuration and fixtures.
 *   Sets up the **Async SQLite** in-memory database.
 *   Provides the `client` fixture for making async HTTP requests to the FastAPI app.
