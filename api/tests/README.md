@@ -22,7 +22,24 @@ This directory contains the automated unit tests for the Stock Prediction API. T
     *   Tests that saved predictions can be retrieved.
     *   Verifies filters and specific metrics like `directional_accuracy`.
 
-### 3. `conftest.py`
+### 3. `test_credits.py`
+**Purpose**: Verifies the Credit Consumption & Payment logic.
+*   **`test_insufficient_credits`**:
+    *   Ensures API returns `402 Payment Required` when balance < cost.
+    *   Verifies the specific error message logic.
+*   **`test_credit_deduction_multihead`**:
+    *   Mocks a successful Multihead prediction (Cost: 2).
+    *   Verifies User balance decreases by 2.
+    *   Verifies a `CreditLedger` entry is created with reason `PREDICTION_MULTIHEAD`.
+*   **`test_credit_deduction_additive`**:
+    *   Mocks a successful Additive prediction (Cost: 3).
+    *   Verifies User balance decreases by 3.
+*   **`test_refund_on_failure`**:
+    *   Simulates a model crash *after* credit deduction.
+    *   Verifies that the credits are refunded (Balance remains unchanged).
+    *   Checks for the `REFUND_FAILED_PREDICTION` ledger entry.
+
+### 4. `conftest.py`
 **Purpose**: Global test configuration and fixtures.
 *   Sets up the **Async SQLite** in-memory database.
 *   Provides the `client` fixture for making async HTTP requests to the FastAPI app.
