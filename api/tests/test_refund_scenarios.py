@@ -10,7 +10,8 @@ class SimpleUser:
 
 def test_double_refund_on_retry():
     """
-    Reproduces the bug where a user is refunded on EACH failure.
+    Verifies that we DO NOT refund on intermediate retries,
+    and ONLY refund on the final failure (or when max retries hit).
     """
     user_id = 123
     initial_credits = 10
@@ -25,30 +26,43 @@ def test_double_refund_on_retry():
         with patch("tasks.Session") as MockSessionClass:
             MockSessionClass.return_value.__enter__.return_value = mock_session
             
-            # We patch the 'retry' method on the Task object itself
-            # We need to ensure we patch the exact object imported
+            # Patch the 'retry' method on the Task object so it raises our interrupt
             with patch.object(predict_task, "retry", side_effect=Exception("RetryInterrupt")) as mock_retry:
-            
-                # --- RUN 1 ---
+                
+                # Setup request mock if not inherently present in this context
+                if not hasattr(predict_task, "request") or predict_task.request is None:
+                    predict_task.request = MagicMock()
+                
+                # --- RUN 1 (Retry Count: 0) ---
+                # We expect NO refund here because we retry.
+                # Credits should stay 10.
+                
+                predict_task.request.retries = 0
+                
                 try:
                     predict_task("AAPL", "multihead", 30, user_id)
                 except Exception as e:
                     if str(e) != "RetryInterrupt":
-                         print(f"Caught unexpected: {e}") 
+                         pass 
                 
-                # Check credit update
-                assert real_user.credits == 12, "Refund 1 failed."
+                # Check credit update - Should be 10 (NO REFUND)
+                assert real_user.credits == 10, f"Credits refunded prematurely! Got {real_user.credits}"
                 
-                # --- RUN 2 ---
+                # --- RUN 2 (Retry Count: 1 - Max) ---
+                # We expect Refund here.
+                # Credits 10 -> 12.
+                
+                predict_task.request.retries = 1
+                
                 try:
                     predict_task("AAPL", "multihead", 30, user_id)
                 except Exception:
                     pass
                     
-                # The Bug: Credits updated again
-                assert real_user.credits == 14, "Double Refund Bug NOT reproduced."
+                # The Bug Fix Verification: Credits updated ONLY now
+                assert real_user.credits == 12, f"Refund failed on max retries. Got {real_user.credits}"
                 
-                print("[BUG PROVEN] Double refund confirmed.")
+                print("[SUCCESS] Refund logic validated: No refund on retry, Refund on max retries.")
 
 def test_refund_db_failure():
     with patch("prediction_service_multihead.get_stock_predictions", side_effect=Exception("Crash")):

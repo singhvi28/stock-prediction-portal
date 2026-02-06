@@ -105,20 +105,31 @@ def predict_task(self, ticker: str, model_type: str, lookback: int, user_id: int
         return result_data
 
     except Exception as e:
-        # Refund credits on failure
-        try:
-             with Session(engine) as session:
-                with session.begin():
-                    cost = 3 if model_type == "additive" else 2
-                    user = session.get(User, user_id)
-                    if user:
-                        user.credits += cost
-                        session.add(CreditLedger(
-                            user_id=user_id,
-                            amount=cost,
-                            reason="REFUND_FAILED_TASK"
-                        ))
-        except Exception as refund_err:
-            print(f"Failed to refund: {refund_err}")
+        # Only refund if this is the final retry attempt
+        # self.request.retries starts at 0. If max_retries is 1, we retry once.
+        # Logic: If retries < max_retries, we are about to retry, so DONT refund yet.
+        # If retries >= max_retries, we are abandoning, so DO refund.
+        
+        # Note: self.retry raises an exception to stop execution.
+        # We need to know if self.retry WILL succeed in scheduling a retry.
+        
+        current_retries = self.request.retries or 0
+        max_retries_limit = 1 # As defined in the retry call below
+        
+        if current_retries >= max_retries_limit:
+            try:
+                 with Session(engine) as session:
+                    with session.begin():
+                        cost = 3 if model_type == "additive" else 2
+                        user = session.get(User, user_id)
+                        if user:
+                            user.credits += cost
+                            session.add(CreditLedger(
+                                user_id=user_id,
+                                amount=cost,
+                                reason="REFUND_FAILED_TASK"
+                            ))
+            except Exception as refund_err:
+                print(f"Failed to refund: {refund_err}")
             
-        raise self.retry(exc=e, max_retries=1)
+        raise self.retry(exc=e, max_retries=max_retries_limit)
