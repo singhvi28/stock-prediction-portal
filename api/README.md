@@ -35,8 +35,9 @@ Visit `http://localhost:8000/docs` for interactive API documentation.
 
 ## To-Do List
 1. Add jupyter notebooks for prediction services
-2. invoice pdf generation
-3. prediction history - add search by ticker and filter by model type
-4. achival storage of prediction history older than 2 months
-5. app logs out on reloading
-6. improve directional accuracy of multihead model
+2. invoice pdf generation 
+3. paginate purchase history by month
+4. prediction history - add search by ticker and filter by model type
+5. achival storage of prediction history older than 2 months
+6. app logs out on reloading
+7. improve directional accuracy of multihead model

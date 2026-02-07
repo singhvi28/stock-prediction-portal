@@ -107,6 +107,28 @@ This directory contains the automated unit tests for the Stock Prediction API. T
     *   **Logic Verified**: Ensures that the database lock (`with_for_update`) prevents both requests from succeeding.
     *   *Note*: This test uses `sqlite+aiosqlite` which has limitations with `FOR UPDATE` locking compared to production PostgreSQL.
 
+### 11. `test_security_idor.py`
+**Purpose**: Verifies Security against Insecure Direct Object References (IDOR).
+*   **`test_get_prediction_status_unauthorized`**:
+    *   Simulates User A creating a task (via mock).
+    *   Authenticates as User B.
+    *   Attempts to access User A's task status.
+    *   **Logic Verified**: Ensures the API returns `403 Forbidden` or `404 Not Found`.
+    *   *Current Status*: **FAILING** (Vulnerability Confirmed). The API currently returns 200 OK.
+
+### 12. `test_validation.py`
+**Purpose**: Verifies Input Validation and Sanitation.
+*   **`test_predict_invalid_ticker`**: Checks rejection of empty or malformed tickers.
+*   **`test_predict_negative_lookback`**: Checks rejection of negative/zero lookback values.
+*   **`test_predict_unknown_model`**: Checks rejection of invalid model types.
+*   *Verification*: Ensures API returns `400 Bad Request` or `422 Unprocessable Entity`.
+
+### 13. `test_webhook_security.py`
+**Purpose**: Verifies Webhook Signature Authentication.
+*   **`test_webhook_invalid_signature`**:
+    *   Sends a webhook payload with an invalid `X-Razorpay-Signature` header.
+    *   **Logic Verified**: Ensures the API rejects the request with `400 Bad Request` before processing any data.
+
 ---
 
 ## 🐛 Bug Report & Fix Log
