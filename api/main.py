@@ -55,11 +55,35 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str
 
+from pydantic import BaseModel, field_validator
+
 class TickerRequest(BaseModel):
     ticker: str
     lookback: Optional[int] = 100
     train_size: Optional[int] = 1000
     model: Optional[str] = "multihead"
+
+    @field_validator('ticker')
+    def validate_ticker(cls, v):
+        if not v or not v.strip():
+             raise ValueError('Ticker cannot be empty')
+        # Simple check for alphanumeric or standard format
+        if not v.isalnum() and not all(c.isalnum() or c in "-." for c in v):
+             raise ValueError('Invalid ticker format')
+        return v
+
+    @field_validator('lookback')
+    def validate_lookback(cls, v):
+        if v is not None and v <= 0:
+             raise ValueError('Lookback must be positive')
+        return v
+        
+    @field_validator('model')
+    def validate_model(cls, v):
+        allowed = ["multihead", "additive", "lstm"]
+        if v and v not in allowed:
+             raise ValueError(f'Model must be one of {allowed}')
+        return v
 
 # Helper functions
 from utils import create_access_token
@@ -215,10 +239,29 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
         print("DEBUG: Commit done")
         
         # Dispatch Task
-        from tasks import predict_task
-        task = predict_task.delay(request.ticker, model_type, request.lookback, user.id)
+        import uuid
+        task_id = str(uuid.uuid4())
         
-        return {"task_id": task.id, "status": "processing"}
+        # Create PredictionHistory record immediately to establish ownership
+        # We initialize with basic info. processing_data/results will be updated by worker.
+        history = PredictionHistory(
+            user_id=user.id,
+            task_id=task_id,
+            ticker=request.ticker.upper(),
+            model_type=model_type,
+            # accurate/prediction_data are null initially
+        )
+        db.add(history)
+        await db.commit()
+        
+        from tasks import predict_task
+        # Pass the pre-generated task_id to Celery
+        predict_task.apply_async(
+            args=[request.ticker, model_type, request.lookback, user.id],
+            task_id=task_id
+        )
+        
+        return {"task_id": task_id, "status": "processing"}
 
     except Exception as e:
         if isinstance(e, HTTPException):
@@ -229,7 +272,27 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
         )
 
 @app.get("/api/predict/{task_id}")
-async def get_prediction_status(task_id: str):
+async def get_prediction_status(
+    task_id: str, 
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # 1. Check Ownership in DB
+    # We query PredictionHistory to see if this task belongs to the user
+    stmt = select(PredictionHistory).where(PredictionHistory.task_id == task_id)
+    result = await db.execute(stmt)
+    history = result.scalars().first()
+    
+    if not history:
+        # If not found in DB, it might be an invalid ID or very old task.
+        # But for security, if we can't verify owner, we must deny or return 404.
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    if history.user_id != user.id:
+        print(f"DEBUG: IDOR Attempt! User {user.id} tried to access task {task_id} owned by {history.user_id}")
+        raise HTTPException(status_code=403, detail="Not authorized to view this task")
+
+    # 2. Fetch Status from Celery
     from celery.result import AsyncResult
     from worker import celery_app
     

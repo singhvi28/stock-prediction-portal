@@ -68,10 +68,7 @@ async def test_get_prediction_status_unauthorized(db_session, client):
         model_type="multihead",
         directional_accuracy=0.99,
         prediction_data={"predicted_price": 150.0, "actual_price": 151.0},
-        # task_id is NOT in the model. We cannot link it.
-        # So we can't create a DB record that links to the task_id.
-        # But the test just needs to try accessing the task_id.
-        # The endpoint uses Celery AsyncResult.
+        task_id=task_id 
     )
     db_session.add(history)
     await db_session.commit()

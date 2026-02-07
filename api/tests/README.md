@@ -2,7 +2,7 @@
 
 This directory contains the automated unit tests for the Stock Prediction API. The tests are built using `pytest` and `httpx` for async testing, using an in-memory SQLite database to ensure speed and isolation.
 
-## 📂 Test Files
+## Test Files
 
 ### 1. `test_auth.py`
 **Purpose**: Verifies the Authentication & Authorization flows.
@@ -58,9 +58,8 @@ This directory contains the automated unit tests for the Stock Prediction API. T
 
 ### 5. `conftest.py`
 **Purpose**: Global test configuration and fixtures.
-*   Sets up the **Async SQLite** in-memory database.
-*   Provides the `client` fixture for making async HTTP requests to the FastAPI app.
-*   Handles database creation/teardown for each test function to ensure isolation.
+*   **`db_session`**: Creates a fresh AsyncSession for each test function using an in-memory SQLite database. Handles table creation before and drop after each test to ensure isolation.
+*   **`client`**: Provides an async `httpx.AsyncClient` for making requests to the FastAPI app, with the database dependency overridden to use the test session.
 
 ---
 
@@ -114,7 +113,7 @@ This directory contains the automated unit tests for the Stock Prediction API. T
     *   Authenticates as User B.
     *   Attempts to access User A's task status.
     *   **Logic Verified**: Ensures the API returns `403 Forbidden` or `404 Not Found`.
-    *   *Current Status*: **FAILING** (Vulnerability Confirmed). The API currently returns 200 OK.
+    *   *Current Status*: **PASSING** (Vulnerability Fixed). The API correctly returns 403 Forbidden.
 
 ### 12. `test_validation.py`
 **Purpose**: Verifies Input Validation and Sanitation.
@@ -160,3 +159,12 @@ During the development of these tests, the following issues were identified and 
 *   **Cause**: `api/tasks.py` initializes a synchronous SQLAlchemy engine but was receiving an async connection string from the environment.
 *   **Fix**: Updated `api/tasks.py` to strip `+aiosqlite` (and `+asyncpg`) from the `DATABASE_URL` before initializing the engine.
 
+### 6. Critical Security Vulnerability (IDOR) in `test_security_idor.py`
+* **Issue**: The `GET /api/predict/{task_id}` endpoint allowed unauthorized access to other users' prediction tasks, returning `200 OK` instead of `403 Forbidden`.
+* **Cause**: An Insecure Direct Object Reference (IDOR) vulnerability existed because the backend did not verify if the requesting user owned the task being queried.
+* **Fix**: Added a `task_id` column to the `PredictionHistory` table in `db.py` to link tasks to users, and updated `main.py` to create records immediately upon submission and enforce ownership verification in the status endpoint, now raising `403 Forbidden` for unauthorized access.
+
+### 7. Application Crash on Invalid Input in `test_validation.py`
+* **Issue**: Sending invalid data, such as an empty ticker, resulted in a `500 Internal Server Error` instead of a proper validation error.
+* **Cause**: The application crashed internally because it lacked a validation layer to reject malformed requests with a 4xx error.
+* **Fix**: Implemented Pydantic validators in the `TickerRequest` model within `main.py` to validate the `ticker`, `lookback`, and `model` fields before processing, ensuring the API correctly returns `422 Unprocessable Entity` for invalid inputs.

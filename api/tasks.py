@@ -91,16 +91,29 @@ def predict_task(self, ticker: str, model_type: str, lookback: int, user_id: int
             with session.begin():
                 from db import PredictionHistory # Keep PredictionHistory if not global
                 
-                acc = result_data.get('metrics', {}).get('directional_accuracy')
+                # Check for existing history record created by main.py
+                stmt = select(PredictionHistory).where(PredictionHistory.task_id == self.request.id)
+                history_entry = session.scalar(stmt)
                 
-                history_entry = PredictionHistory(
-                    user_id=user_id,
-                    ticker=ticker.upper(),
-                    model_type=model_type,
-                    directional_accuracy=acc,
-                    prediction_data=result_data
-                )
-                session.add(history_entry)
+                acc = result_data.get('metrics', {}).get('directional_accuracy')
+
+                if history_entry:
+                    # Update existing
+                    history_entry.prediction_data = result_data
+                    history_entry.directional_accuracy = acc
+                    # ticker/model_type/user_id should match, but we can update to be sure or just save
+                else:
+                    # Fallback: Create new (though main.py should have created it)
+                    print(f"Warning: history not found for task {self.request.id}. Creating new.")
+                    history_entry = PredictionHistory(
+                        user_id=user_id,
+                        task_id=self.request.id, # Ensure we save task_id
+                        ticker=ticker.upper(),
+                        model_type=model_type,
+                        directional_accuracy=acc,
+                        prediction_data=result_data
+                    )
+                    session.add(history_entry)
         
         return result_data
 

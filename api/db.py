@@ -51,10 +51,11 @@ class PredictionHistory(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    task_id: Mapped[str] = mapped_column(String, index=True, nullable=True)
     ticker: Mapped[str] = mapped_column(String, index=True)
     model_type: Mapped[str] = mapped_column(String)
     directional_accuracy: Mapped[float] = mapped_column(Float, nullable=True)
-    prediction_data: Mapped[dict] = mapped_column(JSON_TYPE)
+    prediction_data: Mapped[dict] = mapped_column(JSON_TYPE, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     user: Mapped["User"] = relationship()
