@@ -1,0 +1,1 @@
+{"detail":"An error occurred: \nRetry limit exceeded while trying to reconnect to the Celery redis result store backend. The Celery application must be restarted.\n"}

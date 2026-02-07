@@ -86,6 +86,27 @@ This directory contains the automated unit tests for the Stock Prediction API. T
     *   Simulates a database failure during the refund process.
     *   Ensures the task retry mechanism still triggers even if logging the refund fails.
 
+### 8. `test_auth_expiry.py`
+**Purpose**: Verifies JWT Token Expiration behavior.
+*   **`test_access_with_expired_token`**:
+    *   Generates a valid JWT with a past expiration time.
+    *   Verifies that the API correctly rejects the token with a `401 Unauthorized` response.
+
+### 9. `test_celery_robustness.py`
+**Purpose**: Verifies Celery Worker Robustness and Refund Logic on pure failure.
+*   **`test_predict_task_timeout`**:
+    *   Simulates a task attempting to run but failing (e.g., timeout or crash) after exhausting retries.
+    *   Configures Celery to use in-memory broker/backend for isolation.
+    *   Verifies that the user is refunded and a `REFUND_FAILED_TASK` ledger entry is created.
+
+### 10. `test_race_conditions.py`
+**Purpose**: Verifies that concurrent requests don't lead to negative balances (Double Spend).
+*   **`test_credit_race_condition`**:
+    *   Sets up a user with enough credits for only 1 request.
+    *   Fires 2 concurrent requests using `asyncio.gather`.
+    *   **Logic Verified**: Ensures that the database lock (`with_for_update`) prevents both requests from succeeding.
+    *   *Note*: This test uses `sqlite+aiosqlite` which has limitations with `FOR UPDATE` locking compared to production PostgreSQL.
+
 ---
 
 ## 🐛 Bug Report & Fix Log
@@ -106,4 +127,14 @@ During the development of these tests, the following issues were identified and 
 *   **Issue**: Checkpointing `test_refund_scenarios.py` revealed `UnboundLocalError: local variable 'User' referenced before assignment`.
 *   **Cause**: Local imports inside `try` block were not executed before exception handler ran.
 *   **Fix**: Removed redundant local imports inside `predict_task` to ensure correct scope.
+
+### 4. Critical Race Condition (Double Spend)
+*   **Issue**: Concurrent requests to `/api/predict` could deduct credits multiple times for the same transaction, potentially leading to negative balances.
+*   **Cause**: The credit deduction logic read `user.credits` and updated it without a database lock. Simultaneous requests read the same initial value.
+*   **Fix**: Added `.with_for_update()` to the user selection query in `api/main.py`. This locks the specific user row for the duration of the transaction, ensuring sequential processing of credit deductions.
+
+### 5. Worker Startup Failure with Async Drivers
+*   **Issue**: The Celery worker failed to start when the `DATABASE_URL` contained async drivers (e.g., `sqlite+aiosqlite`), which are used by the FastAPI app but incompatible with the synchronous worker engine.
+*   **Cause**: `api/tasks.py` initializes a synchronous SQLAlchemy engine but was receiving an async connection string from the environment.
+*   **Fix**: Updated `api/tasks.py` to strip `+aiosqlite` (and `+asyncpg`) from the `DATABASE_URL` before initializing the engine.
 

@@ -180,10 +180,15 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
     """
     try:
         # Get user ID
-        result = await db.execute(select(User).where(User.email == email))
+        # Lock the user row to prevent race conditions on credit deduction
+        print(f"DEBUG: Processing request for {email}")
+        result = await db.execute(select(User).where(User.email == email).with_for_update())
         user = result.scalars().first()
         if not user:
+             print("DEBUG: User not found")
              raise HTTPException(status_code=401, detail="User not found")
+
+        print(f"DEBUG: User {user.email} credits {user.credits} locked.")
 
         # Validate Model and Cost
         model_type = request.model or "multihead"
@@ -191,6 +196,7 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
         
         # Check Credits
         if user.credits < cost:
+            print(f"DEBUG: Insufficient credits. Has {user.credits}, needs {cost}")
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
                 detail=f"Insufficient credits. {cost} credits required."
@@ -198,6 +204,7 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
         
         # Deduct Credits
         user.credits -= cost
+        print(f"DEBUG: Deducted {cost}. New balance {user.credits}")
         ledger = CreditLedger(
             user_id=user.id,
             amount=-cost,
@@ -205,6 +212,7 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
         )
         db.add(ledger)
         await db.commit()
+        print("DEBUG: Commit done")
         
         # Dispatch Task
         from tasks import predict_task
@@ -243,7 +251,9 @@ async def get_history(
     email: str = Depends(verify_token),
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(User).where(User.email == email))
+    # Use with_for_update() to lock the row for the duration of the transaction
+    query = select(User).where(User.email == email).with_for_update()
+    result = await db.execute(query)
     user = result.scalars().first()
     if not user:
          raise HTTPException(status_code=401, detail="User not found")
