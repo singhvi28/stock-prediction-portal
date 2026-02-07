@@ -2,8 +2,8 @@
 *.pyc
 __pycache__/
 .cache/
+.pytest_cache/
 myenv/
 .venv/
 venv/
 .cache
-notes.txt
