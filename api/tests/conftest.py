@@ -13,9 +13,18 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 
 from main import app
 from db import Base, get_db
+from worker import celery_app
 
 # Use in-memory SQLite for testing
 SQLALCHEMY_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+# Configure Celery for testing
+celery_app.conf.update(
+    broker_url='memory://',
+    result_backend='cache+memory://',
+    task_always_eager=True,
+    task_eager_propagates=True,
+)
 
 engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL, 

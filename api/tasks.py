@@ -7,7 +7,7 @@ from db import User, Transaction, CreditLedger
 from datetime import datetime
 
 # Use Sync Engine for Celery
-DATABASE_URL = os.getenv("DATABASE_URL").replace("+asyncpg", "")
+DATABASE_URL = os.getenv("DATABASE_URL").replace("+asyncpg", "").replace("+aiosqlite", "")
 engine = create_engine(DATABASE_URL)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
