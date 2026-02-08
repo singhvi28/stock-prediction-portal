@@ -8,15 +8,24 @@ import os
 # Add api directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import os
+import pytest
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from httpx import AsyncClient, ASGITransport
+import sys
+
+# Add api directory to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+TEST_DB_FILE = "test.db"
+TEST_DB_URL = f"sqlite+aiosqlite:///{TEST_DB_FILE}"
+
 # Set env to sqlite for tests so db.py picks JSON instead of JSONB
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["DATABASE_URL"] = TEST_DB_URL
 
 from main import app
 from db import Base, get_db
 from worker import celery_app
-
-# Use in-memory SQLite for testing
-SQLALCHEMY_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 # Configure Celery for testing
 celery_app.conf.update(
@@ -27,22 +36,29 @@ celery_app.conf.update(
 )
 
 engine = create_async_engine(
-    SQLALCHEMY_DATABASE_URL, 
+    TEST_DB_URL, 
     connect_args={"check_same_thread": False}, 
-    poolclass=StaticPool,
 )
 TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
 @pytest.fixture(scope="function")
 async def db_session():
+    # Create tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     
     async with TestingSessionLocal() as session:
         yield session
     
+    # Drop tables and remove file
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+    
+    if os.path.exists(TEST_DB_FILE):
+        try:
+            os.remove(TEST_DB_FILE)
+        except:
+            pass
 
 @pytest.fixture(scope="function")
 async def client(db_session):

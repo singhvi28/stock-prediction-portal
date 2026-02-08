@@ -8,6 +8,8 @@ services:
       POSTGRES_DB: stock_db
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   # Message broker for Celery tasks
   rabbitmq:
@@ -15,18 +17,23 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
 
   # Result backend and lock manager for Celery
   redis:
     image: redis:alpine
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
 
   # FastAPI Backend
   api:
     build:
       context: .
       dockerfile: api/Dockerfile
+    image: stock-pred-backend:latest
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/stock_db
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
@@ -40,9 +47,7 @@ services:
 
   # High-priority worker for payment processing
   worker-payments:
-    build:
-      context: .
-      dockerfile: api/Dockerfile
+    image: stock-pred-backend:latest
     # Routes to 'payments' queue with higher concurrency
     command: celery -A api.worker.celery_app worker -Q payments -c 8 --loglevel=info
     environment:
@@ -56,9 +61,7 @@ services:
 
   # Resource-heavy worker for ML predictions
   worker-ml:
-    build:
-      context: .
-      dockerfile: api/Dockerfile
+    image: stock-pred-backend:latest
     # Routes to 'ml' queue with concurrency limited to 2 to manage CPU/GPU usage
     command: celery -A api.worker.celery_app worker -Q ml -c 2 --loglevel=info
     environment:
@@ -81,3 +84,8 @@ services:
       - "8501:8501"
     depends_on:
       - api
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  redis_data:

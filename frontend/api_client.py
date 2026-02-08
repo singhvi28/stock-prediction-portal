@@ -76,8 +76,8 @@ def get_prediction(ticker, lookback, model_type):
 
     # Polling Loop
     import time
-    with st.spinner("Model is training... (This may take up to 30 seconds)"):
-        for _ in range(60): # 60 * 1s = 1 min max wait
+    with st.spinner("Model is training..."):
+        for _ in range(600): # 60 * 10s = 10 min max wait
             try:
                 status_res = requests.get(f"{API_URL}/api/predict/{task_id}", headers=headers)
                 if status_res.status_code == 200:

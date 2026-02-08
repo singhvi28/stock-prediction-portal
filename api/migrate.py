@@ -64,6 +64,22 @@ async def migrate():
         except Exception as e:
             print(f"Error creating credit_ledger table: {e}")
 
+        # 4. Add task_id to prediction_history
+        try:
+            await conn.execute("ALTER TABLE prediction_history ADD COLUMN IF NOT EXISTS task_id VARCHAR")
+            print("Added task_id column to prediction_history table.")
+            await conn.execute("CREATE INDEX IF NOT EXISTS ix_prediction_history_task_id ON prediction_history(task_id)")
+            print("Created index for task_id")
+        except Exception as e:
+            print(f"Error altering prediction_history table: {e}")
+
+        # 5. Make prediction_data nullable
+        try:
+            await conn.execute("ALTER TABLE prediction_history ALTER COLUMN prediction_data DROP NOT NULL")
+            print("Altered prediction_data to DROP NOT NULL.")
+        except Exception as e:
+            print(f"Error altering prediction_data column: {e}")
+
     finally:
         await conn.close()
     

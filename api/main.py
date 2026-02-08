@@ -264,6 +264,8 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
         return {"task_id": task_id, "status": "processing"}
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(

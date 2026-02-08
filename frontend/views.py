@@ -76,17 +76,22 @@ def show_history_page():
             timestamp = datetime.fromisoformat(item['created_at'])
             with st.expander(f"{item['ticker']} - {timestamp.strftime('%Y-%m-%d %H:%M')} ({item['model_type']})"):
                 # Quick Metrics
-                data = item['prediction_data']
-                if 'metrics' in data:
-                    m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("RMSE", f"${data['metrics']['rmse']:.2f}")
-                    m2.metric("MAE", f"${data['metrics']['mae']:.2f}")
-                    m3.metric("MAPE", f"{data['metrics']['mape']:.2f}%")
-                    m4.metric("Directional Accuracy", f"{data['metrics']['directional_accuracy']:.2f}%")
+                # Quick Metrics
+                data = item.get('prediction_data')
                 
-                # Store selected data in session state to visualize
-                if st.button("Load Visualization", key=f"btn_{item['id']}"):
-                        components.visualize_prediction(data, show_metrics=False)
+                if not data:
+                    st.warning("⏳ Prediction in progress...")
+                else:
+                    if 'metrics' in data:
+                        m1, m2, m3, m4 = st.columns(4)
+                        m1.metric("RMSE", f"${data['metrics']['rmse']:.2f}")
+                        m2.metric("MAE", f"${data['metrics']['mae']:.2f}")
+                        m3.metric("MAPE", f"{data['metrics']['mape']:.2f}%")
+                        m4.metric("Directional Accuracy", f"{data['metrics']['directional_accuracy']:.2f}%")
+                    
+                    # Store selected data in session state to visualize
+                    if st.button("Load Visualization", key=f"btn_{item['id']}"):
+                            components.visualize_prediction(data, show_metrics=False)
 
 def render_dashboard():
     # Fetch latest user info
