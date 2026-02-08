@@ -1,0 +1,67 @@
+services:
+  # Database for user accounts, transactions, and history
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: stock_db
+    ports:
+      - "5432:5432"
+
+  # Message broker for Celery tasks
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  # Result backend for Celery
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  # FastAPI Backend
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/stock_db
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - rabbitmq
+      - redis
+    ports:
+      - "8000:8000"
+
+  # Celery Worker for background ML predictions
+  worker:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    command: celery -A api.worker.celery_app worker --loglevel=info
+    environment:
+      # Synchronous driver for the Celery worker as expected by tasks.py
+      - DATABASE_URL=postgresql://user:password@db:5432/stock_db
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - rabbitmq
+      - redis
+
+  # Streamlit Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      - API_URL=http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
