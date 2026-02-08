@@ -13,7 +13,7 @@ engine = create_engine(DATABASE_URL)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 redis_client = redis.Redis.from_url(REDIS_URL)
 
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=60, queue='payments')
 def process_payment(self, payment_id: str, order_id: str):
     # Idempotency Check
     if redis_client.get(f"processed:{payment_id}"):
@@ -73,7 +73,7 @@ def process_payment(self, payment_id: str, order_id: str):
         except redis.exceptions.LockError:
             pass # Lock might have expired or released
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, queue='ml')
 def predict_task(self, ticker: str, model_type: str, lookback: int, user_id: int):
     try:
         if model_type == "additive":

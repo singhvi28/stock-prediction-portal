@@ -16,7 +16,7 @@ services:
       - "5672:5672"
       - "15672:15672"
 
-  # Result backend for Celery
+  # Result backend and lock manager for Celery
   redis:
     image: redis:alpine
     ports:
@@ -38,14 +38,30 @@ services:
     ports:
       - "8000:8000"
 
-  # Celery Worker for background ML predictions
-  worker:
+  # High-priority worker for payment processing
+  worker-payments:
     build:
       context: .
       dockerfile: api/Dockerfile
-    command: celery -A api.worker.celery_app worker --loglevel=info
+    # Routes to 'payments' queue with higher concurrency
+    command: celery -A api.worker.celery_app worker -Q payments -c 8 --loglevel=info
     environment:
-      # Synchronous driver for the Celery worker as expected by tasks.py
+      - DATABASE_URL=postgresql://user:password@db:5432/stock_db
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - rabbitmq
+      - redis
+
+  # Resource-heavy worker for ML predictions
+  worker-ml:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    # Routes to 'ml' queue with concurrency limited to 2 to manage CPU/GPU usage
+    command: celery -A api.worker.celery_app worker -Q ml -c 2 --loglevel=info
+    environment:
       - DATABASE_URL=postgresql://user:password@db:5432/stock_db
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
       - REDIS_URL=redis://redis:6379/0
