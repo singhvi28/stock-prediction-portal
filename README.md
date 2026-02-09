@@ -1,103 +1,175 @@
-# Stock Prediction & Forecast System
+# Stock Prediction Portal
 
-This project is a full-stack financial application that leverages deep learning to predict and forecast stock prices. It features a **PyTorch-based LSTM with Attention** backend, a **FastAPI** web server with JWT authentication, and a **Streamlit** dashboard for interactive visualization.
+A full-stack machine learning application for predicting stock prices using advanced attention mechanisms. The system features a FastAPI backend with asynchronous task processing via Celery and RabbitMQ, a Streamlit frontend for user interaction, and comprehensive user management with Razorpay payment integration.
 
----
+## 🏗️ Architecture Overview
 
-## Model Architecture
+The backend follows a distributed asynchronous architecture to manage diverse workloads:
 
-The core of this system is a **Multivariate LSTM (Long Short-Term Memory)** network enhanced by a **Bahdanau-style Attention Mechanism**. This architecture is specifically designed to handle the temporal dependencies and noise inherent in financial time-series data.
+* **API Server**: Built with **FastAPI** to handle RESTful requests and JWT-based authentication.
+* **Task Queue**: Utilizes **Celery** with **RabbitMQ** as the message broker to decouple long-running ML tasks from the request-response cycle.
+* **Distributed Workers**: Segregated into specialized queues for optimized resource management:
+    * `worker-payments`: Optimized for high concurrency and low-latency transaction processing.
+    * `worker-ml`: Strictly throttled to manage compute-heavy PyTorch model training and forecasting.
+* **Storage Layer**: Uses **PostgreSQL** for persistent data, **Redis** for task result caching and idempotency locks, and **SQLAlchemy** for ORM management.
 
-### 1. Feature Engineering (Multivariate Input)
+## 🚀 Features
 
-The model does not rely on price alone. It processes a 18-dimensional feature vector for every time step, including:
+-   **Stock Prediction**: Predict future stock prices for ANY ticker using:
+    -   Multihead Attention Models
+    -   Additive Attention Models
+    -   Recursive 30-day forecasting based on 18 technical indicators including RSI, MACD, and Bollinger Bands.
+-   **Interactive Dashboard**: Built with Streamlit for real-time visualization of historical data and forecast trends.
+-   **User Authentication**: Secure JWT-based login, registration, and password reset flows.
+-   **Credit System**: Pay-per-use model integrated with Razorpay. Buy credits to run premium predictions.
+-   **Secure Financial Logic**:
+    -   **Razorpay Integration**: End-to-end payment processing with webhook-driven credit fulfillment.
+    -   **Transaction Integrity**: Utilizes **SQLAlchemy row-level locking** (`with_for_update`) to prevent double-spend race conditions.
+    -   **Idempotency**: Redis-based locking to prevent duplicate transaction processing.
+-   **Asynchronous Processing**: Heavy ML tasks are offloaded to Celery workers (RabbitMQ broker) to ensure a responsive UI.
+-   **Scalable Architecture**: Microservices ready with Docker Compose.
 
-* **OHLCV Data**: Open, High, Low, Close, and Volume.
-* **Trend Indicators**: Moving Averages (50, 100, and 200-day).
-* **Momentum Indicators**: Relative Strength Index (RSI) and MACD (Moving Average Convergence Divergence).
-* **Volatility Indicators**: Bollinger Bands (Upper, Lower, Middle) and Price Range.
-* **Volume Metrics**: 20-day Volume Moving Average.
+## 🛠️ Tech Stack
 
-### 2. Deep Learning Pipeline
+-   **Frontend**: Streamlit, Plotly, Requests
+-   **Backend**: FastAPI, SQLAlchemy, Pydantic
+-   **ML/AI**: PyTorch, Scikit-Learn, Pandas, Numpy
+-   **Task Queue**: Celery, RabbitMQ
+-   **Caching**: Redis
+-   **Database**: PostgreSQL
+-   **Containerization**: Docker, Docker Compose
 
-* **Input Layer**: Accepts a sequence of the last 60 days of the 18-dimensional feature vectors.
-* **Stacked LSTM Layers**: Two LSTM layers (128 units followed by 64 units) capture complex temporal patterns across different time scales.
-* **Dropout Regularization**: Dropout layers (p=0.2) are applied between LSTMs to prevent overfitting to historical noise.
-* **Attention Layer**:
-* Computes a score for every time step in the lookback window using a Tanh activation and learnable weights.
-* Applies a Softmax function to generate "Attention Weights," allowing the model to focus on the most relevant historical days (e.g., a recent price surge) while ignoring irrelevant ones.
-* Produces a **Context Vector** as a weighted sum of the LSTM outputs.
-
-
-* **Output Dense Layers**: Two fully connected layers (32 units and 1 unit) map the context vector to a single predicted Close price.
-
-### 3. Recursive 30-Day Forecasting
-
-Unlike simple one-step predictions, the system performs a **30-day recursive forecast**. The model predicts the price for , then appends this prediction back into the input sequence to predict , repeating this process for a full month.
-
----
-
-## Tech Stack
-
-* **Deep Learning**: PyTorch.
-* **Data Processing**: NumPy, Pandas, Scikit-Learn (MinMaxScaler).
-* **Backend**: FastAPI, Uvicorn, PyJWT (Authentication), Bcrypt (Password Hashing).
-* **Frontend**: Streamlit.
-* **Data Source**: Stooq (via pandas-datareader).
-
----
-
-## Setup & Installation
-
-### 1. Environment Setup
+## 📂 Project Structure
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd stock-pred
-
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
+.
+├── api/                 # FastAPI backend and Celery workers
+│   ├── main.py          # API entry point
+│   ├── tasks.py         # Celery task definitions
+│   ├── models.py        # Database models
+│   └── ...
+├── frontend/            # Streamlit dashboard
+│   ├── app.py           # Frontend entry point
+│   ├── views.py         # UI Pages (Auth, Dashboard)
+│   └── ...
+├── docker-compose.yml   # Orchestration for all services
+├── requirements.txt     # Backend dependencies
+└── README.md            # Project documentation
 ```
 
-### 2. Start the Backend API
+## ⚡ Setup & Installation
 
+### Docker Setup (Recommended)
+
+**Prerequisites**: [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/).
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/singhvi28/stock-pred.git
+   cd stock-pred
+   ```
+
+2. **Configure Environment Variables**:
+   Create a `.env` file in the `api/` directory:
+   ```ini
+   # Database
+   DATABASE_URL=postgresql+asyncpg://user:password@db:5432/stock_db
+
+   # Security
+   SECRET_KEY=your_super_secret_key
+   ALGORITHM=HS256
+
+   # Payments (Razorpay)
+   RAZORPAY_KEY_ID=your_razorpay_key_id
+   RAZORPAY_KEY_SECRET=your_razorpay_key_secret
+
+   # Celery / Broker
+   RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
+   REDIS_URL=redis://redis:6379/0
+   ```
+   > **Note**: You essentially need to provide the Payment Keys and Secret Key.
+
+3. **Run with Docker Compose**:
+   ```bash
+   docker-compose up --build
+   ```
+
+   This will start:
+   -   **Frontend**: `http://localhost:8501`
+   -   **Backend API**: `http://localhost:8000`
+   -   **PostgreSQL**: Port `5432`
+   -   **RabbitMQ Management**: `http://localhost:15672` (Login: `guest`/`guest`)
+   -   **Redis**: Port `6379`
+
+### Local Development Setup
+
+If you wish to run the backend locally without Docker:
+
+1. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Environment Configuration**: Ensure your `.env` points to local services (DB, Redis, RabbitMQ).
+
+3. **Run Migrations**:
+   ```bash
+   python api/migrate.py
+   ```
+
+4. **Start Server**:
+   ```bash
+   uvicorn api.main:app --reload
+   ```
+
+## 🧪 Testing Suite
+
+The project includes a comprehensive test suite built with **Pytest** and **HTTPX**:
+
+* **High Performance**: Uses an **in-memory SQLite database** (`sqlite+aiosqlite`) for rapid, isolated test execution.
+* **Coverage**: Includes unit and integration tests for authentication, credit deduction race conditions, IDOR vulnerabilities, and Celery worker robustness.
+
+Run tests using (inside the container):
 ```bash
-cd api
-python main.py
-
+docker-compose exec api pytest
 ```
 
-*The API server starts at `http://localhost:8000`. You can view the automated Swagger documentation at `/docs`.*
-
-### 3. Start the Streamlit Dashboard
-
-Open a new terminal and run:
-
+Or locally:
 ```bash
-cd frontend
-streamlit run app.py
-
+pytest
 ```
+
+## 📖 API Documentation
+
+Once the server is running, access the interactive documentation at:
+
+* **Swagger UI**: `http://localhost:8000/docs`
+* **ReDoc**: `http://localhost:8000/redoc`
+
+## 📝 Usage
+
+1.  Open your browser and navigate to `http://localhost:8501`.
+2.  **Register** a new account.
+3.  **Login** to access the dashboard.
+4.  If you have insufficient credits, go to the "Buy Credits" section in the sidebar.
+5.  Enter a Stock Ticker (e.g., `AAPL`, `GOOGL`) and select a model.
+6.  Click **Run Prediction**. The request is sent to the backend, processed asynchronously, and the results are displayed.
+
+## To-Do List
+1. Add links to jupyter notebooks for prediction services
+2. Add payment history feature with invoice PDF generation and pagination by month
+3. Prediction history - add search by ticker and filter by model type
+4. Archival storage of prediction history older than 2 months
+5. Fix: app logs out on reloading
+6. Improve directional accuracy of transformer model
+
+## 🤝 Contributing
+
+1.  Fork the repository.
+2.  Create a feature branch.
+3.  Commit your changes.
+4.  Push to the branch.
+5.  Open a Pull Request.
 
 ---
-
-## 🔐 Authentication & Usage
-
-The system uses **JWT (JSON Web Tokens)** for secure access to the prediction endpoints.
-
-**Demo Credentials:**
-
-* **Username**: `demo`
-* **Password**: `demo123`
-
-### Features:
-
-* **Backtest Metrics**: View RMSE, MAE, and Directional Accuracy based on historical performance.
-* **Visualizations**: High-quality dark-mode plots showing actual prices vs. model backtests vs. future forecasts.
-* **Forecast Table**: A data table highlighting the predicted prices for the next 30 days.
+**Disclaimer**: This project is for educational purposes only. Do not use it for financial trading decisions.
