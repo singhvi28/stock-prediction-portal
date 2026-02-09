@@ -46,3 +46,33 @@ We implemented a **Distributed Queue Architecture** with specialized workers:
 
 ### 🏆 Impact:
 This separation ensures **Business Continuity**. Even if the ML pipeline is under 100% load, the payment and authentication systems remain responsive and performant.
+
+---
+
+## 3. Persistent Connection Pooling: Eliminating Handshake Overhead
+
+### 🔴 The Bottleneck (Legacy Approach)
+The original worker implementation created a new database engine and session for **every single task**.
+-   **Handshake Latency**: Establishing a new secure connection to PostgreSQL (SSL handshake, authentication) takes 10-50ms per task.
+-   **Connection Churn**: Rapidly opening and closing connections caused high CPU usage on the database server.
+-   **Resource Exhaustion**: Under heavy load, the workers could exhaust the available database connections (`max_connections` limit), causing the application to crash.
+
+### 🟢 The Solution (Current Architecture)
+We moved the database initialization to the **Worker Lifecycle** using Celery Signals (`@worker_process_init`).
+-   **Global Engine**: A single `SQLAlchemy` engine is created when a worker process starts.
+-   **Connection Pool**: The engine maintains a pool of persistent connections (e.g., 5-10 per worker).
+-   **Scoped Sessions**: Tasks use a thread-local `scoped_session` to reuse these existing "warm" connections.
+
+```python
+@worker_process_init.connect
+def init_worker(**kwargs):
+    # Initializes the pool ONCE per process
+    global db_session
+    engine = create_engine(DATABASE_URL, pool_size=5)
+    db_session = scoped_session(sessionmaker(bind=engine))
+```
+
+### 🏆 Impact:
+-   **Zero-Latency Connection**: Tasks now skip the connection handshake entirely, using an immediate slot from the pool.
+-   **Predictable Load**: The number of DB connections is now deterministic (`num_workers * pool_size`), preventing database overload.
+-   **Throughput Increase**: Significantly higher transaction processing rate for short-lived tasks like payments.
