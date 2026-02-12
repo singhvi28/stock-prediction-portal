@@ -95,12 +95,18 @@ def get_prediction(ticker, lookback, model_type):
         st.error("Prediction timed out.")
         return None
 
-def fetch_history(month, year, limit=20):
+def fetch_history(ticker=None, model=None, limit=50):
     try:
         headers = {"Authorization": f"Bearer {st.session_state.token}"}
+        params = {"limit": limit}
+        if ticker:
+            params["ticker"] = ticker
+        if model:
+            params["model"] = model
+            
         response = requests.get(
             f"{API_URL}/api/history", 
-            params={"month": month, "year": year, "limit": limit},
+            params=params,
             headers=headers
         )
         

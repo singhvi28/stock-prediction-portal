@@ -59,12 +59,19 @@ def show_history_page():
     # Filter Controls
     col1, col2 = st.columns(2)
     with col1:
-        month = st.selectbox("Month", range(1, 13), index=datetime.now().month-1, format_func=lambda x: datetime(2000, x, 1).strftime('%B'))
+        ticker_input = st.text_input("Filter by Ticker", placeholder="e.g. AAPL").strip().upper()
     with col2:
-        year = st.number_input("Year", min_value=2024, max_value=datetime.now().year, value=datetime.now().year)
+        model_filter = st.selectbox("Filter by Model", ["All", "multihead", "additive"])
+
+    if model_filter == "All":
+        model_filter = None
+        
+    if ticker_input and not components.is_valid_ticker(ticker_input):
+        st.warning("⚠️ Invalid ticker format. Only letters, numbers, '.', and '-' are allowed.")
+        return
 
     # Fetch History
-    history = api_client.fetch_history(month, year, limit=20)
+    history = api_client.fetch_history(ticker=ticker_input if ticker_input else None, model=model_filter, limit=50)
     
     if history is not None:
         if not history:
@@ -160,16 +167,19 @@ def render_dashboard():
     }
     
     if st.sidebar.button("Run Prediction & Forecast"):
-        # Save last ticker for title
-        st.session_state.last_ticker = ticker
-        
-        result = api_client.get_prediction(ticker, lookback, model_map[model_choice])
-        
-        if result and result.get("error") == "INSUFFICIENT_CREDITS":
-            cost = 3 if model_choice == "Additive Attention" else 2
-            st.error(f"⚠️ Insufficient Credits! This model requires {cost} credits.")
-            st.info("Opening purchase menu...")
-            st.session_state.show_buy_credits = True
-            st.rerun()
-        elif result:
-            components.visualize_prediction(result)
+        if not components.is_valid_ticker(ticker):
+             st.sidebar.error("⚠️ Invalid ticker format. Only letters, numbers, '.', and '-' are allowed.")
+        else:
+            # Save last ticker for title
+            st.session_state.last_ticker = ticker
+            
+            result = api_client.get_prediction(ticker, lookback, model_map[model_choice])
+            
+            if result and result.get("error") == "INSUFFICIENT_CREDITS":
+                cost = 3 if model_choice == "Additive Attention" else 2
+                st.error(f"⚠️ Insufficient Credits! This model requires {cost} credits.")
+                st.info("Opening purchase menu...")
+                st.session_state.show_buy_credits = True
+                st.rerun()
+            elif result:
+                components.visualize_prediction(result)

@@ -310,9 +310,9 @@ async def get_prediction_status(
 @app.get("/api/history")
 async def get_history(
     page: int = 1, 
-    limit: int = 10, 
-    month: Optional[int] = None, 
-    year: Optional[int] = None,
+    limit: int = 50, 
+    ticker: Optional[str] = None,
+    model: Optional[str] = None,
     email: str = Depends(verify_token),
     db: AsyncSession = Depends(get_db)
 ):
@@ -325,9 +325,11 @@ async def get_history(
 
     query = select(PredictionHistory).where(PredictionHistory.user_id == user.id)
     
-    if month and year:
-        query = query.where(extract('month', PredictionHistory.created_at) == month)
-        query = query.where(extract('year', PredictionHistory.created_at) == year)
+    if ticker:
+        query = query.where(PredictionHistory.ticker.ilike(f"%{ticker}%"))
+    
+    if model:
+        query = query.where(PredictionHistory.model_type == model)
     
     # Order by newest first
     query = query.order_by(desc(PredictionHistory.created_at))

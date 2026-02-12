@@ -158,11 +158,12 @@ Once the server is running, access the interactive documentation at:
 ## To-Do List
 1. Add links to jupyter notebooks for prediction services
 2. Add payment history feature with invoice PDF generation and pagination by month
-3. Prediction history - add search by ticker and filter by model type
+3. ~~Prediction history - add search by ticker and filter by model type~~
 4. Archival storage of prediction history older than 2 months
 5. Rewrite frontend in ReactJS
 6. Fix: app logs out on reloading (by useContext)
 7. Improve directional accuracy of transformer model
+8. Add baseline LSTM model (pre-trained on S&P 500, no on-the-fly training)
 
 ## 🤝 Contributing
 

@@ -122,3 +122,13 @@ def visualize_prediction(result, show_metrics=True):
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
+def is_valid_ticker(ticker):
+    """
+    Validates that the ticker contains only alphanumeric characters, dots, and hyphens.
+    Returns True if valid or empty.
+    Returns False if invalid characters are found.
+    """
+    if not ticker:
+        return True
+    return all(c.isalnum() or c in "-." for c in ticker)
