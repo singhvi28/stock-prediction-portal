@@ -160,8 +160,9 @@ Once the server is running, access the interactive documentation at:
 2. Add payment history feature with invoice PDF generation and pagination by month
 3. Prediction history - add search by ticker and filter by model type
 4. Archival storage of prediction history older than 2 months
-5. Fix: app logs out on reloading
-6. Improve directional accuracy of transformer model
+5. Rewrite frontend in ReactJS
+6. Fix: app logs out on reloading (by useContext)
+7. Improve directional accuracy of transformer model
 
 ## 🤝 Contributing
 

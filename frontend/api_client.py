@@ -77,7 +77,7 @@ def get_prediction(ticker, lookback, model_type):
     # Polling Loop
     import time
     with st.spinner("Model is training..."):
-        for _ in range(600): # 60 * 10s = 10 min max wait
+        for _ in range(40): # 40 * 15s = 10 min max wait
             try:
                 status_res = requests.get(f"{API_URL}/api/predict/{task_id}", headers=headers)
                 if status_res.status_code == 200:
@@ -87,7 +87,7 @@ def get_prediction(ticker, lookback, model_type):
                     elif data["status"] == "failed":
                         st.error(f"Prediction failed: {data.get('error')}")
                         return None
-                time.sleep(1)
+                time.sleep(15)
             except Exception as e:
                 st.error(f"Polling error: {e}")
                 return None
