@@ -122,6 +122,36 @@ If you wish to run the backend locally without Docker:
    uvicorn api.main:app --reload
    ```
 
+### Manual Startup (Using 4 Terminals)
+
+If you prefer running services manually instead of using Docker Compose, open 4 separate terminal windows:
+
+**Terminal 1: Backend API**
+```bash
+cd api
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Terminal 2: Frontend Dashboard**
+```bash
+cd frontend
+streamlit run app.py
+```
+
+**Terminal 3: Payments Worker (High Priority)**
+```bash
+# Run from project root
+export PYTHONPATH=$PYTHONPATH:$(pwd)/api && celery -A api.worker.celery_app worker -l info -Q payments -n payments@%h
+```
+
+**Terminal 4: ML Worker (Resource Heavy)**
+```bash
+# Run from project root
+export PYTHONPATH=$PYTHONPATH:$(pwd)/api && celery -A api.worker.celery_app worker -l info -Q ml -n ml@%h -c 2
+```
+
+> **Note**: Ensure RabbitMQ and Redis are running locally or update `.env` to point to their remote URLs.
+
 ## 🧪 Testing Suite
 
 The project includes a comprehensive test suite built with **Pytest** and **HTTPX**:
@@ -164,6 +194,7 @@ Once the server is running, access the interactive documentation at:
 6. Fix: app logs out on reloading (by useContext)
 7. Improve directional accuracy of transformer model
 8. Add baseline LSTM model (pre-trained on S&P 500, no on-the-fly training)
+9. Automate the retraining of baseline LSTM every 1st of the month using cron job
 
 ## 🤝 Contributing
 
