@@ -57,6 +57,51 @@ The backend follows a distributed asynchronous architecture to manage diverse wo
 └── README.md            # Project documentation
 ```
 
+## 🗄️ Database Schema
+
+The application uses **PostgreSQL** with **SQLAlchemy ORM**. Below is the schema design:
+
+### 1. **Users** (`users`)
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | Integer (PK) | Unique user ID |
+| `email` | String | Unique email address |
+| `password_hash` | String | Hashed password |
+| `credits` | Integer | Current credit balance (Default: 5) |
+| `created_at` | DateTime | Account creation timestamp |
+
+### 2. **Prediction History** (`prediction_history`)
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | Integer (PK) | Unique record ID |
+| `user_id` | Integer (FK) | Reference to `users.id` |
+| `task_id` | String | Celery task ID |
+| `ticker` | String | Stock ticker symbol (e.g., AAPL) |
+| `model_type` | String | Model used (additive/multihead) |
+| `directional_accuracy` | Float | Model accuracy metric |
+| `prediction_data` | JSONB | Raw prediction results & metrics |
+| `created_at` | DateTime | Timestamp of request |
+
+### 3. **Transactions** (`transactions`)
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | Integer (PK) | Unique transaction ID |
+| `user_id` | Integer (FK) | Reference to `users.id` |
+| `razorpay_order_id` | String | Order ID from Razorpay |
+| `razorpay_payment_id` | String | Payment ID (updated on success) |
+| `amount_paise` | Integer | Amount in paise |
+| `credits` | Integer | Credits purchased |
+| `status` | String | `PENDING`, `SUCCESS`, `FAILED` |
+
+### 4. **Credit Ledger** (`credit_ledger`)
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | Integer (PK) | Unique ledger ID |
+| `user_id` | Integer (FK) | Reference to `users.id` |
+| `transaction_id` | Integer (FK) | Linked transaction (nullable) |
+| `amount` | Integer | Credits added/deducted |
+| `reason` | String | `PURCHASE`, `REFUND_FAILED_TASK`, etc. |
+
 ## ⚡ Setup & Installation
 
 ### Docker Setup (Recommended)
@@ -150,6 +195,12 @@ export PYTHONPATH=$PYTHONPATH:$(pwd)/api && celery -A api.worker.celery_app work
 export PYTHONPATH=$PYTHONPATH:$(pwd)/api && celery -A api.worker.celery_app worker -l info -Q ml -n ml@%h -c 2
 ```
 
+**Terminal 5: Celery Beat (Periodic Tasks)**
+```bash
+# Run from project root
+export PYTHONPATH=$PYTHONPATH:$(pwd)/api && celery -A api.worker.celery_app beat -l info
+```
+
 > **Note**: Ensure RabbitMQ and Redis are running locally or update `.env` to point to their remote URLs.
 
 ## 🧪 Testing Suite
@@ -187,14 +238,14 @@ Once the server is running, access the interactive documentation at:
 
 ## To-Do List
 1. Add links to jupyter notebooks for prediction services
-2. Add payment history feature with invoice PDF generation and pagination by month
-3. ~~Prediction history - add search by ticker and filter by model type~~
-4. Archival storage of prediction history older than 2 months
-5. Rewrite frontend in ReactJS
-6. Fix: app logs out on reloading (by useContext)
-7. Improve directional accuracy of transformer model
-8. Add baseline LSTM model (pre-trained on S&P 500, no on-the-fly training)
-9. Automate the retraining of baseline LSTM every 1st of the month using cron job
+2. ~~Prediction history - add search by ticker and filter by model type~~
+3. Archival storage of prediction history older than 2 months
+4. Rewrite frontend in ReactJS
+5. Fix: app logs out on reloading (by useContext)
+6. ~~Improve directional accuracy of transformer model~~
+7. Add baseline LSTM model (pre-trained on S&P 500, no on-the-fly training)
+8. Automate the retraining of baseline LSTM every 1st of the month using cron job
+9. ~~Automate the refund process for failed predictions~~
 
 ## 🤝 Contributing
 
