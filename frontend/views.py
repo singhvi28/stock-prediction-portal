@@ -88,6 +88,10 @@ def show_history_page():
                 
                 if not data:
                     st.warning("⏳ Prediction in progress...")
+                elif data.get("refunded"):
+                    st.error("❌ Failed & Refunded")
+                    if 'error' in data:
+                        st.caption(f"Reason: {data['error']}")
                 else:
                     if 'metrics' in data:
                         m1, m2, m3, m4 = st.columns(4)

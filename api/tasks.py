@@ -154,11 +154,78 @@ def predict_task(self, ticker: str, model_type: str, lookback: int, user_id: int
                         amount=cost,
                         reason="REFUND_FAILED_TASK"
                     ))
+                    
+                    # Update History to show failure and refund
+                    stmt = select(PredictionHistory).where(PredictionHistory.task_id == self.request.id)
+                    history_entry = db_session.scalar(stmt)
+                    if history_entry:
+                        history_entry.prediction_data = {
+                            "status": "failed", 
+                            "error": str(e), 
+                            "refunded": True
+                        }
+                        
                     db_session.commit()
             except Exception as refund_err:
                 db_session.rollback()
                 print(f"Failed to refund: {refund_err}")
             
         raise self.retry(exc=e, max_retries=max_retries_limit)
+    finally:
+        db_session.remove()
+
+@celery_app.task(bind=True)
+def cleanup_stuck_tasks(self):
+    """
+    Periodic task to find prediction requests that are stuck in 'processing' 
+    (prediction_data is NULL) for more than 24 hours.
+    Marks them as failed and refunds credits.
+    """
+    from datetime import timedelta
+    
+    if db_session is None:
+        return "DB Session not initialized"
+
+    try:
+        # Find stuck tasks
+        cutoff_time = datetime.utcnow() - timedelta(hours=24)
+        stmt = select(PredictionHistory).where(
+            PredictionHistory.prediction_data == None,
+            PredictionHistory.created_at < cutoff_time
+        )
+        stuck_tasks = db_session.scalars(stmt).all()
+        
+        refund_count = 0
+        
+        for task in stuck_tasks:
+            print(f"Cleaning up stuck task: {task.task_id}")
+            
+            # 1. Mark as failed
+            task.prediction_data = {
+                "status": "failed", 
+                "error": "Task timed out (24h cleanup)",
+                "refunded": True
+            }
+            
+            # 2. Refund
+            cost = 3 if task.model_type == "additive" else 2
+            user = db_session.get(User, task.user_id)
+            
+            if user:
+                user.credits += cost
+                db_session.add(CreditLedger(
+                    user_id=user.id,
+                    amount=cost,
+                    reason="REFUND_STUCK_TASK"
+                ))
+                refund_count += 1
+        
+        db_session.commit()
+        return f"Cleaned up {refund_count} stuck tasks."
+
+    except Exception as e:
+        db_session.rollback()
+        print(f"Error in cleanup task: {e}")
+        return f"Error: {e}"
     finally:
         db_session.remove()

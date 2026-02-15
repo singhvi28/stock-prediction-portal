@@ -1,0 +1,12 @@
+# General
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+.cache/
+load_test_ml_workers.py
+
+# Celery
+celerybeat-schedule
+celerybeat.pid

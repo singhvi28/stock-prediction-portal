@@ -38,12 +38,30 @@ services:
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/stock_db
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
       - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./api:/app
     depends_on:
       - db
       - rabbitmq
       - redis
     ports:
       - "8000:8000"
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    image: stock-pred-backend:latest
+    command: celery -A api.worker.celery_app beat -l info
+    volumes:
+      - ./api:/app
+    depends_on:
+      - rabbitmq
+      - redis
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/stock_db
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
+      - REDIS_URL=redis://redis:6379/0
 
   # High-priority worker for payment processing
   worker-payments:

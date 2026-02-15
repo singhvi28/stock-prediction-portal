@@ -24,5 +24,12 @@ celery_app.conf.update(
     task_routes={
         'tasks.process_payment': {'queue': 'payments'},
         'tasks.predict_task': {'queue': 'ml'},
+        'tasks.cleanup_stuck_tasks': {'queue': 'payments'}, # Run cleanup on payments worker (lightweight)
+    },
+    beat_schedule={
+        'cleanup-every-hour': {
+            'task': 'tasks.cleanup_stuck_tasks',
+            'schedule': 3600.0, # 60 minutes
+        },
     }
 )

@@ -6,4 +6,7 @@ __pycache__/
 myenv/
 .venv/
 venv/
-.cache
+
+# Celery
+celerybeat-schedule
+celerybeat.pid

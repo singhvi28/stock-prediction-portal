@@ -76,3 +76,35 @@ def init_worker(**kwargs):
 -   **Zero-Latency Connection**: Tasks now skip the connection handshake entirely, using an immediate slot from the pool.
 -   **Predictable Load**: The number of DB connections is now deterministic (`num_workers * pool_size`), preventing database overload.
 -   **Throughput Increase**: Significantly higher transaction processing rate for short-lived tasks like payments.
+
+---
+
+## 4. Automated Refund & Cleanup Mechanism
+
+### 🔴 The Bottleneck (Edge Case Handling)
+In distributed systems, tasks can occasionally fail silently or become "stuck" due to:
+-   **Worker Crashes**: Hard termination (e.g., OOM Kill) prevents the worker from updating the task status.
+-   **Network Partitions**: Result backend (Redis) becomes temporarily unreachable.
+-   **Lost Acks**: RabbitMQ message acknowledgments failing.
+
+Previously, these tasks would remain in a "Processing" state indefinitely, locking user credits.
+
+### 🟢 The Solution (Current Architecture)
+We implemented a **Periodic Cleanup Strategy** using **Celery Beat**.
+
+#### 1. Stuck Task Detection
+A scheduled task (`cleanup_stuck_tasks`) runs every **60 minutes** to scan the database for prediction requests that have been pending for more than **24 hours**.
+
+#### 2. Atomic Refund Transaction
+For every identified stuck task, the system performs an atomic transaction:
+1.  **Mark as Failed**: Updates `PredictionHistory` status to `FAILED` with a specific error message.
+2.  **Refund Credits**: Credits are returned to the user's balance.
+3.  **Audit Log**: A `CreditLedger` entry is created with the reason `REFUND_STUCK_TASK`.
+
+#### 3. Immediate Failure Handling
+If a task fails during execution (after all retries are exhausted), the `predict_task` logic catches the exception and immediately issues a refund.
+
+### 🏆 Impact:
+-   **Trust**: Users are guaranteed a refund if the system fails to deliver.
+-   **Data Hygiene**: The database doesn't accumulate "zombie" tasks processing forever.
+-   **Self-Healing**: The system recovers from partial failures without manual intervention.
