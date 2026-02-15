@@ -132,6 +132,28 @@ from technical_indicators import (
 )
 
 # =========================
+# Custom Loss Function
+# =========================
+class DirectionalMSELoss(nn.Module):
+    def __init__(self, alpha=1.0):
+        super().__init__()
+        self.mse = nn.MSELoss()
+        self.alpha = alpha
+
+    def forward(self, pred, target, prev_price):
+        # Standard regression loss
+        mse_loss = self.mse(pred, target)
+        
+        # Calculate actual direction: 1 if price went up, -1 if down
+        actual_move = torch.sign(target - prev_price)
+        
+        # Penalty is applied if (actual_move) and (pred - prev_price) have opposite signs
+        # Using ReLU to ensure we only penalize incorrect directions
+        penalty = torch.mean(torch.relu(-actual_move * (pred - prev_price)))
+        
+        return mse_loss + self.alpha * penalty
+
+# =========================
 # Main Prediction Function
 # =========================
 
@@ -199,7 +221,7 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
     ).to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = nn.MSELoss()
+    criterion = DirectionalMSELoss(alpha=1.0)
 
     model.train()
     loader = DataLoader(TensorDataset(X_train_t, y_train_t), batch_size=32, shuffle=True)
@@ -209,15 +231,22 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
         for x, y in loader:
             optimizer.zero_grad()
             output = model(x).squeeze()
-            loss = criterion(output, y)
-            loss.backward()
             
-            # Gradient clipping to prevent exploding gradients
+            # NEW: Extract the 'Close' price from the very last day of the lookback window
+            # x shape is (batch, lookback, features)
+            prev_price = x[:, -1, close_idx] 
+            
+            # Updated loss call
+            loss = criterion(output, y, prev_price)
+            
+            loss.backward()
+        
+            # Gradient clipping remains the same
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             
             optimizer.step()
             epoch_loss += loss.item()
-        
+
         # Optional: Print training progress
         if (epoch + 1) % 5 == 0:
             avg_loss = epoch_loss / len(loader)
