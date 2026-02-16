@@ -1,4 +1,5 @@
 import pytest
+import unittest.mock
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 from httpx import AsyncClient, ASGITransport
@@ -72,3 +73,31 @@ async def client(db_session):
         yield c
     
     app.dependency_overrides.clear()
+
+@pytest.fixture(autouse=True)
+def mock_tasks_db_session():
+    """
+    Ensure tasks.py uses a synchronous session for the test database.
+    tasks.py code is synchronous, so it needs a sync session, not the async one used by tests.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker, scoped_session
+    
+    # Use sync sqlite URL
+    SYNC_DB_URL = "sqlite:///test.db"
+    
+    engine = create_engine(SYNC_DB_URL, connect_args={"check_same_thread": False})
+    session_factory = sessionmaker(bind=engine)
+    ScopedSession = scoped_session(session_factory)
+    
+    # Patch tasks.db_session with the scoped session registry
+    # tasks.py calls db_session() or db_session.method()
+    # In tasks.py: db_session = scoped_session(...)
+    # It uses db_session.scalar(), db_session.remove()
+    # So we patch it with the ScopedSession object itself.
+    
+    with unittest.mock.patch("tasks.db_session", ScopedSession):
+        yield
+    
+    ScopedSession.remove()
+    engine.dispose()

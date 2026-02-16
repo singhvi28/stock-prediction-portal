@@ -10,11 +10,8 @@ def mock_redis():
 
 @pytest.fixture
 def mock_session():
-    with patch("tasks.Session") as mock:
-        session_instance = mock.return_value.__enter__.return_value
-        # Mock session.begin() context manager
-        session_instance.begin.return_value.__enter__.return_value = session_instance
-        yield session_instance
+    with patch("tasks.db_session") as mock:
+        yield mock
 
 def test_process_payment_idempotency(mock_redis):
     # Setup: Redis returns True for processed key

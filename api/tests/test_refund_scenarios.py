@@ -23,8 +23,8 @@ def test_double_refund_on_retry():
         mock_session = MagicMock()
         mock_session.get.return_value = real_user
         
-        with patch("tasks.Session") as MockSessionClass:
-            MockSessionClass.return_value.__enter__.return_value = mock_session
+        # Patch the global db_session
+        with patch("tasks.db_session", mock_session):
             
             # Patch the 'retry' method on the Task object so it raises our interrupt
             with patch.object(predict_task, "retry", side_effect=Exception("RetryInterrupt")) as mock_retry:
@@ -66,10 +66,9 @@ def test_double_refund_on_retry():
 
 def test_refund_db_failure():
     with patch("prediction_service_multihead.get_stock_predictions", side_effect=Exception("Crash")):
-        with patch("tasks.Session") as MockSessionClass:
-            mock_session = MagicMock()
-            mock_session.__enter__.side_effect = Exception("DB Fail")
-            MockSessionClass.return_value = mock_session
+        with patch("tasks.db_session") as mock_session:
+            # Make the first DB call fail
+            mock_session.scalar.side_effect = Exception("DB Fail")
             
             with patch.object(predict_task, "retry", side_effect=Exception("RetryInterrupt")) as mock_retry:
                 try:

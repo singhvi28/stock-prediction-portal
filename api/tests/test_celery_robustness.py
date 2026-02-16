@@ -33,10 +33,9 @@ async def test_predict_task_timeout(db_session):
     # We patch get_stock_predictions to fail.
     
     with patch("prediction_service_multihead.get_stock_predictions", side_effect=Exception("Simulated Timeout")):
-        with patch("tasks.Session") as MockSession:
-            # Mock the session context
-            mock_session_instance = MagicMock()
-            MockSession.return_value.__enter__.return_value = mock_session_instance
+        # Mock the synchronous session used in tasks.py
+        mock_session_instance = MagicMock()
+        with patch("tasks.db_session", mock_session_instance):
             
             # Mock getting the user
             mock_user = MagicMock()
