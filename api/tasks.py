@@ -188,7 +188,7 @@ def cleanup_stuck_tasks(self):
 
     try:
         # Find stuck tasks
-        cutoff_time = datetime.utcnow() - timedelta(hours=24)
+        cutoff_time = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
         stmt = select(PredictionHistory).where(
             PredictionHistory.prediction_data == None,
             PredictionHistory.created_at < cutoff_time

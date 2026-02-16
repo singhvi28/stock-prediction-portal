@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import jwt
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -137,7 +137,7 @@ async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Dep
         return {"message": "If this email is registered, you will receive a reset link."}
     
     token = generate_reset_token()
-    expires_at = datetime.utcnow() + timedelta(minutes=15)
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=15)
     
     reset_token = PasswordResetToken(user_id=user.id, token=token, expires_at=expires_at)
     
@@ -158,7 +158,7 @@ async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depen
     if not reset_token_entry:
         raise HTTPException(status_code=400, detail="Invalid token")
         
-    if reset_token_entry.expires_at < datetime.utcnow():
+    if reset_token_entry.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(status_code=400, detail="Token expired")
     
     # Update password
