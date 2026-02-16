@@ -241,7 +241,7 @@ Once the server is running, access the interactive documentation at:
 2. ~~Prediction history - add search by ticker and filter by model type~~
 3. Archival storage of prediction history older than 2 months
 4. Rewrite frontend in ReactJS
-5. Fix: app logs out on reloading (by useContext)
+5. ~~Fix: app logs out on reloading~~
 6. ~~Improve directional accuracy of transformer model~~
 7. Add baseline LSTM model (pre-trained on S&P 500, no on-the-fly training)
 8. Automate the retraining of baseline LSTM every 1st of the month using cron job

@@ -10,13 +10,17 @@ def login(email, password):
         )
         if response.status_code == 200:
             data = response.json()
-            st.session_state.token = data["access_token"]
+            token = data["access_token"]
+            st.session_state.token = token
             st.session_state.authenticated = True
+            st.query_params["token"] = token
             return True
         return False
     except Exception as e:
         st.error(f"Connection error: {e}")
         return False
+
+
 
 def register(email, password):
     try:
@@ -119,11 +123,12 @@ def fetch_history(ticker=None, model=None, limit=50):
         st.error(f"Error: {e}")
         return None
 
-def get_user_info():
+def get_user_info(token=None):
     try:
-        if not st.session_state.token:
+        t = token or st.session_state.token
+        if not t:
             return None
-        headers = {"Authorization": f"Bearer {st.session_state.token}"}
+        headers = {"Authorization": f"Bearer {t}"}
         response = requests.get(f"{API_URL}/api/auth/me", headers=headers)
         if response.status_code == 200:
             return response.json()
