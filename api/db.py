@@ -24,7 +24,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String)
     credits: Mapped[int] = mapped_column(Integer, default=5)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
@@ -32,7 +32,7 @@ class PasswordResetToken(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     token: Mapped[str] = mapped_column(String, unique=True, index=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     user: Mapped["User"] = relationship()
 
@@ -56,7 +56,7 @@ class PredictionHistory(Base):
     model_type: Mapped[str] = mapped_column(String)
     directional_accuracy: Mapped[float] = mapped_column(Float, nullable=True)
     prediction_data: Mapped[dict] = mapped_column(JSON_TYPE, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User"] = relationship()
 
@@ -70,8 +70,8 @@ class Transaction(Base):
     amount_paise: Mapped[int] = mapped_column(Integer)
     credits: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String, default="PENDING")
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 class CreditLedger(Base):
     __tablename__ = "credit_ledger"
@@ -81,7 +81,7 @@ class CreditLedger(Base):
     transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), nullable=True)
     amount: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(String)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:

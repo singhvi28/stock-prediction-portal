@@ -80,6 +80,19 @@ async def migrate():
         except Exception as e:
             print(f"Error altering prediction_data column: {e}")
 
+        # 6. Fix Timezones
+        try:
+            # We need to alter all timestamp columns to be TIMESTAMP WITH TIME ZONE
+            print("Migrating timestamps to TIMESTAMP WITH TIME ZONE...")
+            await conn.execute("ALTER TABLE users ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE")
+            await conn.execute("ALTER TABLE transactions ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE")
+            await conn.execute("ALTER TABLE transactions ALTER COLUMN updated_at TYPE TIMESTAMP WITH TIME ZONE")
+            await conn.execute("ALTER TABLE credit_ledger ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE")
+            await conn.execute("ALTER TABLE prediction_history ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE")
+            print("Converted Datetime columns to TIMESTAMP WITH TIME ZONE.")
+        except Exception as e:
+            print(f"Error altering timezone columns (might already be set or table missing): {e}")
+
     finally:
         await conn.close()
     
