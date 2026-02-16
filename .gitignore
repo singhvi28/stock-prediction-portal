@@ -10,3 +10,8 @@ load_test_ml_workers.py
 # Celery
 celerybeat-schedule
 celerybeat.pid
+
+# Ngrok
+ngrok
+ngrok.log
+ngrok-v3-stable-linux-amd64.tgz

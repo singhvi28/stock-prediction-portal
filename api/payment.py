@@ -86,3 +86,36 @@ async def payment_webhook(request: Request):
         process_payment.delay(payment_id, order_id)
 
     return {"status": "ok"}
+
+class VerificationRequest(BaseModel):
+    payment_id: str
+    order_id: str
+    signature: str
+
+@router.post("/verify")
+async def verify_payment(req: VerificationRequest):
+    try:
+        # 1. Verify Signature
+        client.utility.verify_payment_signature({
+            'razorpay_order_id': req.order_id,
+            'razorpay_payment_id': req.payment_id,
+            'razorpay_signature': req.signature
+        })
+        
+        # 2. Check status (Optional but recommended)
+        payment = client.payment.fetch(req.payment_id)
+        if payment['status'] != 'captured':
+             print(f"Payment {req.payment_id} is {payment['status']}, not captured.")
+             raise HTTPException(status_code=400, detail="Payment not captured")
+
+        # 3. Trigger Task
+        print(f"Verified payment {req.payment_id}. Queuing task.")
+        process_payment.delay(req.payment_id, req.order_id)
+        
+        return {"status": "verified"}
+        
+    except razorpay.errors.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid Signature")
+    except Exception as e:
+        print(f"Verification Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

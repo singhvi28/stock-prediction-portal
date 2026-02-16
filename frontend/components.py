@@ -15,8 +15,27 @@ def render_razorpay_checkout(order_data):
         "description": "{order_data['description']}",
         "order_id": "{order_data['order_id']}", 
         "handler": function (response){{
-            // Alert user and reload to reflect credits (webhook processing delay might apply)
-            alert("Payment Successful! Payment ID: " + response.razorpay_payment_id + ". Please refresh the page in a few seconds to see updated credits.");
+            // Verify payment on backend
+            fetch("http://localhost:8000/payment/verify", {{
+                method: "POST",
+                headers: {{
+                    "Content-Type": "application/json"
+                }},
+                body: JSON.stringify({{
+                    "payment_id": response.razorpay_payment_id,
+                    "order_id": response.razorpay_order_id,
+                    "signature": response.razorpay_signature
+                }})
+            }})
+            .then(res => {{
+                if (res.ok) {{
+                    alert("Payment Verified Successfully! Credits added.");
+                    window.parent.location.reload();
+                }} else {{
+                    res.text().then(text => alert("Verification Failed: " + text));
+                }}
+            }})
+            .catch(err => alert("Network Error during verification: " + err));
         }},
         "theme": {{
             "color": "#0e1117"

@@ -237,8 +237,9 @@ Once the server is running, access the interactive documentation at:
 6.  Click **Run Prediction**. The request is sent to the backend, processed asynchronously, and the results are displayed.
 
 ## To-Do List
-1. Add links to jupyter notebooks for prediction services
-2. ~~Prediction history - add search by ticker and filter by model type~~
+1. Implement Ngrok solution for real webhook testing (High Priority)
+2. Add links to jupyter notebooks for prediction services
+3. ~~Prediction history - add search by ticker and filter by model type~~
 3. Archival storage of prediction history older than 2 months
 4. Rewrite frontend in ReactJS
 5. ~~Fix: app logs out on reloading~~

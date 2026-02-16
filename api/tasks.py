@@ -5,7 +5,7 @@ from celery.signals import worker_process_init
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker, scoped_session
 from db import User, Transaction, CreditLedger, PredictionHistory
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Global Session (initialized per worker process)
 db_session = None
@@ -188,7 +188,7 @@ def cleanup_stuck_tasks(self):
 
     try:
         # Find stuck tasks
-        cutoff_time = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
         stmt = select(PredictionHistory).where(
             PredictionHistory.prediction_data == None,
             PredictionHistory.created_at < cutoff_time
