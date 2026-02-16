@@ -1,0 +1,14 @@
+.prediction-chart-container {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.prediction-chart-container h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #fff;
+    font-size: 1.25rem;
+}

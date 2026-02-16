@@ -1,0 +1,129 @@
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+}
+
+.modal-content {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #1a1d29;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    max-width: 800px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    z-index: 1001;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.modal-header h2 {
+    margin: 0;
+    color: #fff;
+    font-size: 1.75rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: #9aa0a6;
+    font-size: 2rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.modal-close:hover {
+    color: #fff;
+}
+
+.modal-info {
+    color: #9aa0a6;
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+}
+
+.packages-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+}
+
+.package-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 2rem 1.5rem;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.package-card:hover {
+    border-color: #818cf8;
+    transform: translateY(-2px);
+}
+
+.package-card h3 {
+    margin: 0 0 1rem 0;
+    color: #fff;
+    font-size: 1.25rem;
+}
+
+.package-price {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #818cf8;
+    margin-bottom: 0.5rem;
+}
+
+.package-credits {
+    color: #9aa0a6;
+    margin-bottom: 1.5rem;
+    font-size: 0.875rem;
+}
+
+.package-btn {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: #818cf8;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.package-btn:hover:not(:disabled) {
+    background: #6366f1;
+}
+
+.package-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+    .packages-grid {
+        grid-template-columns: 1fr;
+    }
+}

@@ -1,6 +1,6 @@
 # Stock Prediction Portal
 
-A full-stack machine learning application for predicting stock prices using advanced attention mechanisms. The system features a FastAPI backend with asynchronous task processing via Celery and RabbitMQ, a Streamlit frontend for user interaction, and comprehensive user management with Razorpay payment integration.
+A full-stack machine learning application for predicting stock prices using advanced attention mechanisms. The system features a FastAPI backend with asynchronous task processing via Celery and RabbitMQ, a React frontend for user interaction, and comprehensive user management with Razorpay payment integration.
 
 ## 🏗️ Architecture Overview
 
@@ -19,7 +19,7 @@ The backend follows a distributed asynchronous architecture to manage diverse wo
     -   Multihead Attention Models
     -   Additive Attention Models
     -   Recursive 30-day forecasting based on 18 technical indicators including RSI, MACD, and Bollinger Bands.
--   **Interactive Dashboard**: Built with Streamlit for real-time visualization of historical data and forecast trends.
+-   **Interactive Dashboard**: Built with React for real-time visualization of historical data and forecast trends.
 -   **User Authentication**: Secure JWT-based login, registration, and password reset flows.
 -   **Credit System**: Pay-per-use model integrated with Razorpay. Buy credits to run premium predictions.
 -   **Secure Financial Logic**:
@@ -31,7 +31,7 @@ The backend follows a distributed asynchronous architecture to manage diverse wo
 
 ## 🛠️ Tech Stack
 
--   **Frontend**: Streamlit, Plotly, Requests
+-   **Frontend**: React, React Router, Recharts, Axios
 -   **Backend**: FastAPI, SQLAlchemy, Pydantic
 -   **ML/AI**: PyTorch, Scikit-Learn, Pandas, Numpy
 -   **Task Queue**: Celery, RabbitMQ
@@ -48,9 +48,11 @@ The backend follows a distributed asynchronous architecture to manage diverse wo
 │   ├── tasks.py         # Celery task definitions
 │   ├── models.py        # Database models
 │   └── ...
-├── frontend/            # Streamlit dashboard
-│   ├── app.py           # Frontend entry point
-│   ├── views.py         # UI Pages (Auth, Dashboard)
+├── frontend/            # React dashboard
+│   ├── src/             # Source code
+│   │   ├── pages/       # Page components
+│   │   ├── components/  # Reusable components
+│   │   └── services/    # API client
 │   └── ...
 ├── docker-compose.yml   # Orchestration for all services
 ├── requirements.txt     # Backend dependencies
@@ -106,7 +108,7 @@ The application uses **PostgreSQL** with **SQLAlchemy ORM**. Below is the schema
 
 ### Docker Setup (Recommended)
 
-**Prerequisites**: [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/).
+**Prerequisites**: [Docker](https://docs.docker.com/get-docker/) with the Compose plugin (`docker compose`).
 
 1. **Clone the repository**:
    ```bash
@@ -115,10 +117,11 @@ The application uses **PostgreSQL** with **SQLAlchemy ORM**. Below is the schema
    ```
 
 2. **Configure Environment Variables**:
-   Create a `.env` file in the `api/` directory:
+
+   **Backend** — Create a `.env` file in the `api/` directory:
    ```ini
    # Database
-   DATABASE_URL=postgresql+asyncpg://user:password@db:5432/stock_db
+   DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/stock_db
 
    # Security
    SECRET_KEY=your_super_secret_key
@@ -129,79 +132,111 @@ The application uses **PostgreSQL** with **SQLAlchemy ORM**. Below is the schema
    RAZORPAY_KEY_SECRET=your_razorpay_key_secret
 
    # Celery / Broker
-   RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
-   REDIS_URL=redis://redis:6379/0
+   RABBITMQ_URL=amqp://guest:guest@localhost:5672//
+   REDIS_URL=redis://localhost:6379/0
    ```
-   > **Note**: You essentially need to provide the Payment Keys and Secret Key.
 
-3. **Run with Docker Compose**:
+   **Frontend** — Create a `.env` file in the `frontend/` directory:
+   ```ini
+   VITE_API_URL=http://localhost:8001
+   VITE_RAZORPAY_KEY_ID=your_razorpay_key_id
+   ```
+
+   > **Note**: At minimum you need to provide the Razorpay keys and a `SECRET_KEY`.
+
+3. **Build all images**:
    ```bash
-   docker-compose up --build
+   docker compose build
    ```
 
-   This will start:
-   -   **Frontend**: `http://localhost:8501`
-   -   **Backend API**: `http://localhost:8000`
-   -   **PostgreSQL**: Port `5432`
-   -   **RabbitMQ Management**: `http://localhost:15672` (Login: `guest`/`guest`)
-   -   **Redis**: Port `6379`
+4. **Start all services**:
+   ```bash
+   docker compose up -d
+   ```
 
-### Local Development Setup
+5. **Verify everything is healthy**:
+   ```bash
+   docker compose ps
+   docker compose logs worker-ml worker-payments --tail 10
+   ```
 
-If you wish to run the backend locally without Docker:
+   Once running, the following services are available:
 
-1. **Install Dependencies**:
+   | Service | URL / Port |
+   |---------|-----------|
+   | **React Frontend** | `http://localhost:5174` |
+   | **Backend API** | `http://localhost:8001` |
+   | **Swagger Docs** | `http://localhost:8001/docs` |
+   | **PostgreSQL** | `localhost:5433` |
+   | **RabbitMQ Management** | `http://localhost:15673` (Login: `guest`/`guest`) |
+   | **Redis** | `localhost:6380` |
+
+6. **Stop all services**:
+   ```bash
+   docker compose down
+   ```
+
+   To also remove volumes (database data, etc.):
+   ```bash
+   docker compose down -v
+   ```
+
+---
+
+### Local Development Setup (Without Docker)
+
+**Prerequisites**: PostgreSQL, RabbitMQ, and Redis must be running locally on their default ports (5432, 5672, 6379).
+
+1. **Install Backend Dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Environment Configuration**: Ensure your `.env` points to local services (DB, Redis, RabbitMQ).
-
-3. **Run Migrations**:
+2. **Install Frontend Dependencies**:
    ```bash
-   python api/migrate.py
+   cd frontend && npm install && cd ..
    ```
 
-4. **Start Server**:
+3. **Configure `.env`** files (see Docker Setup step 2 above, using `localhost` hostnames).
+
+4. **Start all services** — open 5 separate terminals:
+
+   **Terminal 1 — Backend API**:
    ```bash
-   uvicorn api.main:app --reload
+   cd api
+   python main.py
    ```
 
-### Manual Startup (Using 4 Terminals)
+   **Terminal 2 — React Frontend**:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
 
-If you prefer running services manually instead of using Docker Compose, open 4 separate terminal windows:
+   **Terminal 3 — Payments Worker** (high priority, I/O-bound):
+   ```bash
+   export PYTHONPATH=$PYTHONPATH:$(pwd)/api
+   celery -A api.worker.celery_app worker -l info -Q payments -n payments@%h
+   ```
 
-**Terminal 1: Backend API**
-```bash
-cd api
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
+   **Terminal 4 — ML Worker** (resource heavy, CPU-bound):
+   ```bash
+   export PYTHONPATH=$PYTHONPATH:$(pwd)/api
+   celery -A api.worker.celery_app worker -l info -Q ml -n ml@%h -c 2
+   ```
 
-**Terminal 2: Frontend Dashboard**
-```bash
-cd frontend
-streamlit run app.py
-```
+   **Terminal 5 — Celery Beat** (periodic cleanup tasks):
+   ```bash
+   export PYTHONPATH=$PYTHONPATH:$(pwd)/api
+   celery -A api.worker.celery_app beat -l info
+   ```
 
-**Terminal 3: Payments Worker (High Priority)**
-```bash
-# Run from project root
-export PYTHONPATH=$PYTHONPATH:$(pwd)/api && celery -A api.worker.celery_app worker -l info -Q payments -n payments@%h
-```
+   > **Note**: Terminals 3–5 must be run from the **project root** directory.
 
-**Terminal 4: ML Worker (Resource Heavy)**
-```bash
-# Run from project root
-export PYTHONPATH=$PYTHONPATH:$(pwd)/api && celery -A api.worker.celery_app worker -l info -Q ml -n ml@%h -c 2
-```
-
-**Terminal 5: Celery Beat (Periodic Tasks)**
-```bash
-# Run from project root
-export PYTHONPATH=$PYTHONPATH:$(pwd)/api && celery -A api.worker.celery_app beat -l info
-```
-
-> **Note**: Ensure RabbitMQ and Redis are running locally or update `.env` to point to their remote URLs.
+   Once running locally:
+   -   **Frontend**: `http://localhost:5173`
+   -   **Backend API**: `http://localhost:8000`
+   -   **Swagger Docs**: `http://localhost:8000/docs`
 
 ## 🧪 Testing Suite
 
@@ -212,7 +247,7 @@ The project includes a comprehensive test suite built with **Pytest** and **HTTP
 
 Run tests using (inside the container):
 ```bash
-docker-compose exec api pytest
+docker compose exec api pytest
 ```
 
 Or locally:
@@ -224,12 +259,12 @@ pytest
 
 Once the server is running, access the interactive documentation at:
 
-* **Swagger UI**: `http://localhost:8000/docs`
-* **ReDoc**: `http://localhost:8000/redoc`
+* **Swagger UI**: `http://localhost:8001/docs` (Docker) or `http://localhost:8000/docs` (local)
+* **ReDoc**: `http://localhost:8001/redoc` (Docker) or `http://localhost:8000/redoc` (local)
 
 ## 📝 Usage
 
-1.  Open your browser and navigate to `http://localhost:8501`.
+1.  Open your browser and navigate to `http://localhost:5174` (Docker) or `http://localhost:5173` (local dev).
 2.  **Register** a new account.
 3.  **Login** to access the dashboard.
 4.  If you have insufficient credits, go to the "Buy Credits" section in the sidebar.
@@ -241,7 +276,7 @@ Once the server is running, access the interactive documentation at:
 2. Add links to jupyter notebooks for prediction services
 3. ~~Prediction history - add search by ticker and filter by model type~~
 3. Archival storage of prediction history older than 2 months
-4. Rewrite frontend in ReactJS
+4. ~~Rewrite frontend in ReactJS~~
 5. ~~Fix: app logs out on reloading~~
 6. ~~Improve directional accuracy of transformer model~~
 7. Add baseline LSTM model (pre-trained on S&P 500, no on-the-fly training)

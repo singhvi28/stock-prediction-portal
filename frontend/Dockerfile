@@ -1,19 +1,29 @@
-FROM python:3.10-slim
-
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Multi-stage build for React frontend
+FROM node:18-alpine as build
 
 WORKDIR /app
 
-# Install dependencies required for the dashboard and visualizations
-COPY frontend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy package files
+COPY package*.json ./
 
-# Copy the frontend source code
-COPY frontend/ /app/frontend/
+# Install dependencies
+RUN npm install
 
-# Streamlit default port
-EXPOSE 8501
+# Copy source code
+COPY . .
 
-WORKDIR /app/frontend
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# Build the app
+RUN npm run build
+
+# Production stage - serve with nginx
+FROM nginx:alpine
+
+# Copy built files from build stage
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
