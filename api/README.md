@@ -108,3 +108,81 @@ If a task fails during execution (after all retries are exhausted), the `predict
 -   **Trust**: Users are guaranteed a refund if the system fails to deliver.
 -   **Data Hygiene**: The database doesn't accumulate "zombie" tasks processing forever.
 -   **Self-Healing**: The system recovers from partial failures without manual intervention.
+
+---
+
+## 5. Lazy Engine Initialization: Fixing Celery Worker Crashes in Docker
+
+### 🔴 The Bug
+
+When deploying with Docker Compose, all Celery workers (`worker-ml`, `worker-payments`, `celery-beat`) crashed immediately on startup with:
+
+```
+sqlalchemy.exc.InvalidRequestError: The asyncio extension requires an async driver
+to be used. The loaded 'psycopg2' is not async.
+```
+
+The **API container** started fine. Only workers were affected.
+
+### 🔍 Root Cause: Eager Module-Level Engine Creation
+
+The original `db.py` created the async engine at **module level**:
+
+```python
+# db.py (BEFORE fix)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+engine = create_async_engine(DATABASE_URL, echo=True)          # ← executes on import
+AsyncSessionLocal = async_sessionmaker(engine, ...)            # ← executes on import
+```
+
+These lines run **the moment any file imports `db.py`** — even if it only needs the model classes.
+
+The import chain that triggers the crash:
+
+```
+Celery worker starts
+  → imports worker.py (celery app)
+    → loads tasks.py (via include=['tasks'])
+      → from db import User, Transaction, CreditLedger, PredictionHistory
+        → db.py module loads
+          → create_async_engine() executes immediately
+            → 💥 CRASH: psycopg2 is not an async driver
+```
+
+Celery workers are **synchronous**. They create their own sync `create_engine()` inside `tasks.py` via the `@worker_process_init` signal. They never need the async engine from `db.py` — they only import it for the **SQLAlchemy model classes** (`User`, `Transaction`, etc.). But because the engine was created at module level, merely importing models was enough to crash.
+
+### 🟢 The Fix: Lazy Initialization
+
+We wrapped engine creation in a function that only runs when actually needed:
+
+```python
+# db.py (AFTER fix)
+engine = None
+AsyncSessionLocal = None
+
+def _init_engine():
+    global engine, AsyncSessionLocal
+    if engine is None:
+        engine = create_async_engine(DATABASE_URL, echo=True)
+        AsyncSessionLocal = async_sessionmaker(
+            engine, expire_on_commit=False, class_=AsyncSession
+        )
+
+async def get_db():
+    _init_engine()       # engine created here, only when FastAPI needs it
+    async with AsyncSessionLocal() as session:
+        yield session
+```
+
+### Why This Works
+
+| Consumer | What it imports from `db.py` | Needs the async engine? | Behaviour after fix |
+|----------|----------------------------|------------------------|-------------------|
+| **FastAPI** (API container) | Models + `get_db()` | ✅ Yes | `_init_engine()` called on first request → creates engine with `asyncpg` |
+| **Celery workers** | Models only (`User`, `Transaction`, etc.) | ❌ No | `engine` stays `None` → no crash. Workers use their own sync engine from `tasks.py` |
+
+### 🏆 Impact:
+-   **Separation of Concerns**: Data model definitions (classes) are decoupled from infrastructure (engine/sessions), allowing different consumers to import the same module safely.
+-   **Docker Compatibility**: All 8 containers (`api`, `frontend`, `db`, `redis`, `rabbitmq`, `celery-beat`, `worker-payments`, `worker-ml`) start and run correctly.
+-   **Zero Breaking Changes**: The fix is backward-compatible — FastAPI endpoints and local development work identically.

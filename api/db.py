@@ -11,8 +11,15 @@ load_dotenv()
 # Use environment variable for DB connection, default to local example if not set
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-engine = create_async_engine(DATABASE_URL, echo=True)
-AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+# Lazy engine initialization — avoids crash when Celery workers import this module
+engine = None
+AsyncSessionLocal = None
+
+def _init_engine():
+    global engine, AsyncSessionLocal
+    if engine is None:
+        engine = create_async_engine(DATABASE_URL, echo=True)
+        AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 class Base(DeclarativeBase):
     pass
@@ -84,9 +91,11 @@ class CreditLedger(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    _init_engine()
     async with AsyncSessionLocal() as session:
         yield session
 
 async def init_db():
+    _init_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
