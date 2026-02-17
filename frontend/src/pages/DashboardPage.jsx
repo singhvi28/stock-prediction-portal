@@ -1,132 +1,85 @@
-import { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { createPrediction } from '../services/api';
-import { usePolling } from '../hooks/usePolling';
+import { usePredictionManager } from '../hooks/usePredictionManager';
 import PredictionChart from '../components/PredictionChart';
 import BuyCreditsModal from '../components/BuyCreditsModal';
 import './DashboardPage.css';
 
-const isValidTicker = (ticker) => {
-    if (!ticker) return true;
-    return /^[A-Z0-9.-]+$/.test(ticker);
-};
-
 const DashboardPage = () => {
-    const { user, refreshUser } = useAuth();
-    const [ticker, setTicker] = useState('AAPL');
-    const [modelType, setModelType] = useState('multihead');
-    const [showBuyCredits, setShowBuyCredits] = useState(false);
-    const [taskId, setTaskId] = useState(null);
-    const [predictionResult, setPredictionResult] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-
-    const { status, result, error: pollError } = usePolling(taskId);
-
-    const handleRunPrediction = async () => {
-        if (!isValidTicker(ticker)) {
-            setError('⚠️ Invalid ticker format. Only letters, numbers, \'.\', and \'-\' are allowed.');
-            return;
-        }
-
-        setError('');
-        setLoading(true);
-        setPredictionResult(null);
-
-        try {
-            const response = await createPrediction(ticker, 60, modelType);
-            if (response.task_id) {
-                setTaskId(response.task_id);
-            }
-        } catch (err) {
-            if (err.response?.status === 402) {
-                const cost = modelType === 'additive' ? 3 : 2;
-                setError(`⚠️ Insufficient Credits! This model requires ${cost} credits.`);
-                setShowBuyCredits(true);
-            } else {
-                setError(err.response?.data?.detail || 'Failed to initiate prediction');
-            }
-            setLoading(false);
-        }
-    };
-
-    // Handle polling results
-    if (status === 'completed' && result && result !== predictionResult) {
-        setPredictionResult(result);
-        setLoading(false);
-        setTaskId(null);
-        refreshUser();
-    } else if (status === 'failed' || status === 'timeout') {
-        setError(pollError || 'Prediction failed');
-        setLoading(false);
-        setTaskId(null);
-    }
-
-    const handleBuyCreditsSuccess = () => {
-        setShowBuyCredits(false);
-        refreshUser();
-    };
+    const { 
+        ticker, modelType, showBuyCredits, result, loading, error, 
+        runPrediction, updateField 
+    } = usePredictionManager();
 
     return (
         <div className="dashboard-page">
-            <div className="dashboard-container">
+            <header className="dashboard-header">
                 <h1>Analysis for {ticker || 'Stock'}</h1>
+            </header>
 
-                <div className="controls-section">
-                    <div className="control-group">
-                        <label>Stock Ticker</label>
-                        <input
-                            type="text"
-                            value={ticker}
-                            onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                            placeholder="e.g., AAPL"
-                            disabled={loading}
-                        />
-                    </div>
+            <section className="controls-section">
+                <ControlGroup label="Stock Ticker">
+                    <input
+                        type="text"
+                        value={ticker}
+                        onChange={(e) => updateField('ticker', e.target.value.toUpperCase())}
+                        placeholder="e.g., AAPL"
+                        disabled={loading}
+                    />
+                </ControlGroup>
 
-                    <div className="control-group">
-                        <label>Prediction Model</label>
-                        <select
-                            value={modelType}
-                            onChange={(e) => setModelType(e.target.value)}
-                            disabled={loading}
-                        >
-                            <option value="multihead">Multihead Attention</option>
-                            <option value="additive">Additive Attention</option>
-                        </select>
-                    </div>
-
-                    <button
-                        className="run-prediction-btn"
-                        onClick={handleRunPrediction}
-                        disabled={loading || !ticker}
+                <ControlGroup label="Prediction Model">
+                    <select
+                        value={modelType}
+                        onChange={(e) => updateField('modelType', e.target.value)}
+                        disabled={loading}
                     >
-                        {loading ? 'Processing...' : 'Run Prediction & Forecast'}
-                    </button>
-                </div>
+                        <option value="multihead">Multihead Attention</option>
+                        <option value="additive">Additive Attention</option>
+                    </select>
+                </ControlGroup>
 
-                {error && <div className="error-message">{error}</div>}
+                <button 
+                    className="run-prediction-btn" 
+                    onClick={runPrediction} 
+                    disabled={loading || !ticker}
+                >
+                    {loading ? 'Processing...' : 'Run Prediction & Forecast'}
+                </button>
+            </section>
 
-                {loading && (
-                    <div className="loading-section">
-                        <div className="spinner"></div>
-                        <p>Model is training... This may take a few minutes.</p>
-                    </div>
-                )}
+            {error && <div className="error-message" role="alert">{error}</div>}
 
-                {predictionResult && !loading && (
-                    <PredictionChart result={predictionResult} showMetrics={true} />
-                )}
-            </div>
+            {loading && <LoadingState />}
+
+            {result && !loading && (
+                <PredictionChart result={result} showMetrics={true} />
+            )}
 
             {showBuyCredits && (
                 <BuyCreditsModal
-                    onClose={() => setShowBuyCredits(false)}
-                    onSuccess={handleBuyCreditsSuccess}
+                    onClose={() => updateField('showBuyCredits', false)}
+                    onSuccess={() => {
+                        updateField('showBuyCredits', false);
+                        // refreshUser is handled inside the hook or context
+                    }}
                 />
             )}
         </div>
     );
 };
+
+// Sub-components can be moved to their own files
+const ControlGroup = ({ label, children }) => (
+    <div className="control-group">
+        <label>{label}</label>
+        {children}
+    </div>
+);
+
+const LoadingState = () => (
+    <div className="loading-section">
+        <div className="spinner"></div>
+        <p>Model is training... This may take a few minutes.</p>
+    </div>
+);
 
 export default DashboardPage;
