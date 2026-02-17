@@ -4,14 +4,19 @@ A full-stack machine learning application for predicting stock prices using adva
 
 ## 🏗️ Architecture Overview
 
-The backend follows a distributed asynchronous architecture to manage diverse workloads:
+![Architecture Diagram](architecture.png)
 
-* **API Server**: Built with **FastAPI** to handle RESTful requests and JWT-based authentication.
-* **Task Queue**: Utilizes **Celery** with **RabbitMQ** as the message broker to decouple long-running ML tasks from the request-response cycle.
-* **Distributed Workers**: Segregated into specialized queues for optimized resource management:
-    * `worker-payments`: Optimized for high concurrency and low-latency transaction processing.
-    * `worker-ml`: Strictly throttled to manage compute-heavy PyTorch model training and forecasting.
-* **Storage Layer**: Uses **PostgreSQL** for persistent data, **Redis** for task result caching and idempotency locks, and **SQLAlchemy** for ORM management.
+The system follows a **distributed event-driven architecture** designed for high scalability and responsiveness. The core workflow separates lightweight HTTP handling from heavy computational tasks:
+
+1.  **FastAPI Backend**: Acts as the entry point, handling user authentication, request validation, and credit checks.
+2.  **Asynchronous Task Queue**: Long-running operations (model training and forecasting) are offloaded to **RabbitMQ** via **Celery**.
+3.  **Specialized Workers**:
+    *   `worker-ml`: Dedicated to CPU-intensive PyTorch training tasks (Multihead Attention, LSTM). Scaled independently.
+    *   `worker-payments`: Handles I/O-bound payment webhooks and credit ledger updates.
+4.  **Data Persistence**:
+    *   **PostgreSQL**: Stores user profiles, transaction history, and permanent prediction records.
+    *   **Redis**: Used for Celery results backend, caching, and distributed locking (idempotency).
+5.  **React Frontend**: Polls the backend for task status updates, providing a responsive non-blocking user experience.
 
 ## 🚀 Features
 
