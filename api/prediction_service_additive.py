@@ -191,11 +191,11 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
             "mape": float(mape),
             "directional_accuracy": float(directional_accuracy)
         },
-        "last_price": float(actual_inv[-1]),
+        "last_price": round(float(actual_inv[-1]), 3),
         "historical_dates": [d.strftime('%Y-%m-%d') for d in dates],
-        "historical_prices": [float(x) for x in actual_inv],
-        "model_historical_predictions": [float(x) for x in preds_inv],
+        "historical_prices": [round(float(x), 3) for x in actual_inv],
+        "model_historical_predictions": [round(float(x), 3) for x in preds_inv],
         "forecast_dates": [d.strftime('%Y-%m-%d') for d in future_dates],
-        "forecast_prices": [float(x) for x in future_inv]
+        "forecast_prices": [round(float(x), 3) for x in future_inv]
     }
     
