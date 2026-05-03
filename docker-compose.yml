@@ -1,5 +1,5 @@
 services:
-  # Database for user accounts, transactions, and history
+  # 1. Database: PostgreSQL
   db:
     image: postgres:15
     environment:
@@ -10,8 +10,9 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: always
 
-  # Message broker for Celery tasks
+  # 2. Broker: RabbitMQ
   rabbitmq:
     image: rabbitmq:3-management
     ports:
@@ -19,16 +20,18 @@ services:
       - "15673:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    restart: always
 
-  # Result backend and lock manager for Celery
+  # 3. Cache/Result Backend: Redis
   redis:
     image: redis:alpine
     ports:
       - "6380:6379"
     volumes:
       - redis_data:/data
+    restart: always
 
-  # FastAPI Backend
+  # 4. Main API (Builds the shared backend image)
   api:
     build:
       context: .
@@ -49,7 +52,9 @@ services:
       - redis
     ports:
       - "8001:8000"
+    restart: always
 
+  # 5. Celery Beat (Uses API image)
   celery-beat:
     image: stock-pred-backend:latest
     working_dir: /app/api
@@ -57,63 +62,62 @@ services:
     volumes:
       - ./api:/app/api
     depends_on:
-      - rabbitmq
-      - redis
+      - api
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/stock_db
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
       - REDIS_URL=redis://redis:6379/0
       - PYTHONPATH=/app/api
+    restart: always
 
-  # High-priority worker for payment processing
+  # 6. Payment Worker (Uses API image)
   worker-payments:
     image: stock-pred-backend:latest
     working_dir: /app/api
-    # Routes to 'payments' queue with higher concurrency
-    command: celery -A worker.celery_app worker -Q payments -c 8 --loglevel=info
+    command: celery -A worker.celery_app worker -Q payments -c 2 --loglevel=info
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/stock_db
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
       - REDIS_URL=redis://redis:6379/0
       - PYTHONPATH=/app/api
     depends_on:
-      - db
-      - rabbitmq
-      - redis
+      - api
     volumes:
       - ./api:/app/api
+    restart: always
 
-  # Resource-heavy worker for ML predictions
+  # 7. ML Worker (Uses API image)
   worker-ml:
     image: stock-pred-backend:latest
     working_dir: /app/api
-    # Routes to 'ml' queue with concurrency limited to 2 to manage CPU/GPU usage
-    command: celery -A worker.celery_app worker -Q ml -c 2 --loglevel=info
+    command: celery -A worker.celery_app worker -Q ml -c 1 --loglevel=info
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/stock_db
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
       - REDIS_URL=redis://redis:6379/0
       - PYTHONPATH=/app/api
     depends_on:
-      - db
-      - rabbitmq
-      - redis
+      - api
     volumes:
       - ./api:/app/api
+    restart: always
 
-  # React Frontend
+  # 8. React Frontend (Standard Web Port 80)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     environment:
-      - VITE_API_URL=http://localhost:8001
+      # DIRECT IP SETUP (No Domain)
+      - VITE_API_URL=http://13.233.172.46:8001
     ports:
-      - "5174:80"
+      - "80:80"
     depends_on:
       - api
+    restart: always
 
 volumes:
   postgres_data:
   rabbitmq_data:
   redis_data:
+
