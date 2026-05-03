@@ -1,0 +1,33 @@
+name: Deploy Stock Prediction Portal
+
+on:
+  push:
+    branches:
+      - main  # Set this to your primary branch name
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Navigate to the project directory
+            cd ~/stock-prediction-portal
+            
+            # Pull the latest changes from GitHub
+            git pull origin main
+            
+            # Rebuild and restart the containers defined in your docker-compose.yml
+            sudo docker-compose up -d --build
+            
+            # Optional: Prune unused images to save space on EC2
+            sudo docker image prune -f
