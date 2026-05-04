@@ -60,7 +60,7 @@ from technical_indicators import (
     calculate_macd, 
     calculate_bollinger, 
     prepare_sequences, 
-    fetch_stock_data_stooq
+    fetch_stock_data
 )
 
 # =========================
@@ -73,7 +73,7 @@ def get_stock_predictions(ticker, lookback=60, epochs=15, forecast_days=30):
     calculates performance metrics, and generates a 30-day recursive forecast.
     """
     # 1. Fetch and Prepare Data
-    df = fetch_stock_data_stooq(ticker)
+    df = fetch_stock_data(ticker)
     
     # Calculate Indicators
     df['MA_50'] = df['Close'].rolling(50).mean()
