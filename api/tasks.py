@@ -36,8 +36,9 @@ def process_payment(self, payment_id: str, order_id: str):
     if redis_client.get(f"processed:{payment_id}"):
         return "Already Processed"
 
-    # Locking
-    lock_key = f"lock:{payment_id}"
+    # Locking on the order: Razorpay can produce several payment attempts
+    # against one order, and the credits are attached to the order.
+    lock_key = f"lock:{order_id}"
     lock = redis_client.lock(lock_key, timeout=30)
     
     if not lock.acquire(blocking=False):

@@ -226,6 +226,9 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
                 detail=f"Insufficient credits. {cost} credits required."
             )
         
+        import uuid
+        task_id = str(uuid.uuid4())
+
         # Deduct Credits
         user.credits -= cost
         print(f"DEBUG: Deducted {cost}. New balance {user.credits}")
@@ -235,13 +238,7 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
             reason=f"PREDICTION_{model_type.upper()}"
         )
         db.add(ledger)
-        await db.commit()
-        print("DEBUG: Commit done")
-        
-        # Dispatch Task
-        import uuid
-        task_id = str(uuid.uuid4())
-        
+
         # Create PredictionHistory record immediately to establish ownership
         # We initialize with basic info. processing_data/results will be updated by worker.
         history = PredictionHistory(
@@ -252,7 +249,11 @@ async def predict(request: TickerRequest, email: str = Depends(verify_token), db
             # accurate/prediction_data are null initially
         )
         db.add(history)
+
+        # Single commit: the debit and the history row that makes it recoverable must land
+        # together, or a crash between them loses the credits with nothing to sweep.
         await db.commit()
+        print("DEBUG: Commit done")
         
         from tasks import predict_task
         # Pass the pre-generated task_id to Celery
